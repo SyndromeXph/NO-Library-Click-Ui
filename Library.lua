@@ -1,7 +1,6 @@
 -- ============================================================
--- SolsticeUI v4.0 - Ultimate Recreation
--- Inspired by reference design patterns + pixel-perfect screenshot
--- Features: CanvasGroup, custom fonts, smooth animations, config system
+-- SolsticeUI v5.0 - Final Polish
+-- Loading animations, ArrayList Back easing, pink press feedback
 -- ============================================================
 
 local Players = game:GetService("Players")
@@ -14,24 +13,21 @@ local HttpService = game:GetService("HttpService")
 
 local LocalPlayer = Players.LocalPlayer
 
--- ==================== FONT LOADER (from reference) ====================
+-- ==================== FONT LOADER ====================
 local FontLoader = {}
 local fontTable = {
-    Minecraft = "https://github.com/MoeriiLua/fontNIGTHING/raw/main/Minecraft%20Regular.otf",
     SFDisplay = "https://github.com/Storm99999/Moon/raw/main/src/fonts/SFPRODISPLAYBOLD.OTF",
+    Minecraft = "https://github.com/MoeriiLua/fontNIGTHING/raw/main/Minecraft%20Regular.otf",
     GreyCliff = "https://github.com/Storm99999/Moon/raw/main/src/fonts/GreyCliff.otf"
 }
 
 local request = request or http_request or (syn and syn.request) or function() end
 local getAsset = (syn and getsynasset) or getcustomasset
 
-if not isfolder("SolsticeFonts") then
-    makefolder("SolsticeFonts")
-end
-
+if not isfolder("SolsticeFonts") then makefolder("SolsticeFonts") end
 for name, url in next, fontTable do
     if not isfile("SolsticeFonts/" .. name .. ".otf") then
-        local success, result = pcall(function()
+        pcall(function()
             writefile("SolsticeFonts/" .. name .. ".otf", request({Url = url, Method = "GET"}).Body)
         end)
     end
@@ -53,9 +49,8 @@ end
 local SolsticeUI = {}
 SolsticeUI.__index = SolsticeUI
 
--- Pixel-perfect color palette
 local PALETTE = {
-    PanelBg = Color3.fromRGB(20, 20, 24),
+    PanelBg = Color3.fromRGB(18, 18, 22),
     PanelBgTransparency = 0.04,
     PanelBorder = Color3.fromRGB(42, 42, 50),
 
@@ -68,9 +63,14 @@ local PALETTE = {
     ItemText = Color3.fromRGB(210, 210, 215),
     ItemHoverBg = Color3.fromRGB(38, 38, 46),
 
-    ActiveStart = Color3.fromRGB(255, 165, 200),
-    ActiveEnd = Color3.fromRGB(215, 155, 245),
+    -- Active: solid pink bg + dark text (from reference blue pattern)
+    ActiveBg = Color3.fromRGB(255, 165, 200),
     ActiveText = Color3.fromRGB(15, 15, 20),
+    ActiveGradientStart = Color3.fromRGB(255, 165, 200),
+    ActiveGradientEnd = Color3.fromRGB(215, 155, 245),
+
+    -- Press feedback: darker pink
+    PressBg = Color3.fromRGB(235, 145, 180),
 
     SettingBg = Color3.fromRGB(14, 14, 18),
     SettingBgTransparency = 0.08,
@@ -122,7 +122,7 @@ local DEFAULT_CONFIG = {
     ArrayListTextSize = 14,
     ArrayListItemHeight = 16,
     ArrayListRainbowSpeed = 0.35,
-    ArrayListAnimSpeed = 0.28,
+    ArrayListAnimSpeed = 0.3,
 
     UseCustomFont = true,
     CustomFontName = "SFDisplay",
@@ -133,9 +133,12 @@ local DEFAULT_CONFIG = {
     ShowNotifications = true,
     ShowWatermark = true,
 
-    -- Config saving
     SaveConfig = true,
     ConfigPath = "SolsticeUI/config.json",
+
+    -- Animation settings
+    LoadAnimDelay = 0.06,
+    LoadAnimDuration = 0.4,
 }
 
 -- ==================== UTILITIES ====================
@@ -217,7 +220,6 @@ function SolsticeUI.new(userConfig)
         for k, v in pairs(userConfig) do self.Config[k] = v end
     end
 
-    -- Load saved config
     self.SavedConfig = {}
     if self.Config.SaveConfig and isfile(self.Config.ConfigPath) then
         local success, decoded = pcall(function()
@@ -235,7 +237,6 @@ function SolsticeUI.new(userConfig)
         end)
     end
 
-    -- Use CanvasGroup for better performance (from reference)
     self.ClickGui = Instance.new("ScreenGui")
     self.ClickGui.Name = "SolsticeClickGUI"
     self.ClickGui.ResetOnSpawn = false
@@ -257,6 +258,7 @@ function SolsticeUI.new(userConfig)
     self.RainbowOffset = 0
     self.NextPanelX = self.Config.StartX
     self.NextPanelY = self.Config.StartY
+    self.PanelLoadQueue = {} -- For staggered load animation
 
     self:_InitWatermark()
     self:_InitSearchBar()
@@ -292,6 +294,30 @@ end
 function SolsticeUI:_SaveModuleState(name, state, value)
     if not self.SavedConfig.modules then self.SavedConfig.modules = {} end
     self.SavedConfig.modules[name] = {state = state, value = value}
+end
+
+-- ==================== LOADING ANIMATION ====================
+function SolsticeUI:_PlayPanelLoadAnimation(panel, index)
+    panel.BackgroundTransparency = 1
+    panel.Position = UDim2.new(
+        panel.Position.X.Scale, 
+        panel.Position.X.Offset, 
+        panel.Position.Y.Scale, 
+        panel.Position.Y.Offset + 20
+    )
+
+    local delay = index * self.Config.LoadAnimDelay
+    task.delay(delay, function()
+        Tween(panel, TweenInfo.new(self.Config.LoadAnimDuration, Enum.EasingStyle.Back, Enum.EasingDirection.Out), {
+            BackgroundTransparency = PALETTE.PanelBgTransparency,
+            Position = UDim2.new(
+                panel.Position.X.Scale,
+                panel.Position.X.Offset,
+                panel.Position.Y.Scale,
+                panel.Position.Y.Offset - 20
+            )
+        }):Play()
+    end)
 end
 
 -- ==================== WATERMARK ====================
@@ -410,7 +436,7 @@ function SolsticeUI:_FilterModules(query)
     end
 end
 
--- ==================== ARRAY LIST (FIXED LAYERING) ====================
+-- ==================== ARRAY LIST (IMPROVED ANIMATIONS) ====================
 function SolsticeUI:_InitArrayList()
     self.ArrayListMaster = Instance.new("Frame")
     self.ArrayListMaster.Name = "ArrayListMaster"
@@ -465,7 +491,7 @@ function SolsticeUI:_UpdateArrayList()
         activeNames[data.name] = true
     end
 
-    -- Animate out removed items
+    -- Animate out removed items with Back easing
     for name, itemFrame in pairs(self.ArrayListItems) do
         if not activeNames[name] and itemFrame.Visible then
             itemFrame.Visible = false
@@ -473,15 +499,17 @@ function SolsticeUI:_UpdateArrayList()
             local txt = itemFrame:FindFirstChild("TextLabel")
             if bg and txt then
                 local tw = GetTextWidth(txt.Text, self.Config.ArrayListFont, self.Config.ArrayListTextSize) + 10
-                Tween(bg, TweenInfo.new(self.Config.ArrayListAnimSpeed, Enum.EasingStyle.Quad, Enum.EasingDirection.In), {
-                    Position = UDim2.new(0, tw + 30, 0, 0),
+                -- Slide out to right with Back easing (bouncy)
+                Tween(bg, TweenInfo.new(self.Config.ArrayListAnimSpeed, Enum.EasingStyle.Back, Enum.EasingDirection.In), {
+                    Position = UDim2.new(0, tw + 50, 0, 0),
                     BackgroundTransparency = 1
                 }):Play()
-                Tween(txt, TweenInfo.new(self.Config.ArrayListAnimSpeed, Enum.EasingStyle.Quad, Enum.EasingDirection.In), {
+                Tween(txt, TweenInfo.new(self.Config.ArrayListAnimSpeed * 0.8, Enum.EasingStyle.Quad, Enum.EasingDirection.In), {
+                    Position = UDim2.new(0, tw + 30, 0, 0),
                     TextTransparency = 1
                 }):Play()
             end
-            task.delay(self.Config.ArrayListAnimSpeed + 0.05, function()
+            task.delay(self.Config.ArrayListAnimSpeed + 0.1, function()
                 if itemFrame and itemFrame.Parent then
                     itemFrame.Visible = false
                 end
@@ -502,7 +530,7 @@ function SolsticeUI:_UpdateArrayList()
             itemFrame.ClipsDescendants = false
             itemFrame.Parent = self.ArrayListContent
 
-            -- Background bar (ZIndex 1)
+            -- Background bar
             local bgBar = Instance.new("Frame")
             bgBar.Name = "BgBar"
             bgBar.Size = UDim2.new(0, 0, 1, 0)
@@ -513,7 +541,7 @@ function SolsticeUI:_UpdateArrayList()
             bgBar.ZIndex = 1
             bgBar.Parent = itemFrame
 
-            -- Text label (ZIndex 2, ON TOP)
+            -- Text label
             local txt = Instance.new("TextLabel")
             txt.Name = "TextLabel"
             txt.Size = UDim2.new(0, 0, 1, 0)
@@ -552,18 +580,18 @@ function SolsticeUI:_UpdateArrayList()
             bgBar.Size = UDim2.new(0, tw, 1, 0)
         end
 
-        -- Animate in
+        -- Animate in with Back easing (bouncy slide from right)
         if isNew then
             if bgBar then
-                bgBar.Position = UDim2.new(0, tw + 30, 0, 0)
-                Tween(bgBar, TweenInfo.new(self.Config.ArrayListAnimSpeed, Enum.EasingStyle.Quad, Enum.EasingDirection.Out), {
+                bgBar.Position = UDim2.new(0, tw + 50, 0, 0)
+                Tween(bgBar, TweenInfo.new(self.Config.ArrayListAnimSpeed, Enum.EasingStyle.Back, Enum.EasingDirection.Out), {
                     Position = UDim2.new(0, 0, 0, 0),
                     BackgroundTransparency = PALETTE.ArrayListBgTransparency
                 }):Play()
             end
             if txt then
                 txt.Position = UDim2.new(0, tw + 30, 0, 0)
-                Tween(txt, TweenInfo.new(self.Config.ArrayListAnimSpeed, Enum.EasingStyle.Quad, Enum.EasingDirection.Out), {
+                Tween(txt, TweenInfo.new(self.Config.ArrayListAnimSpeed * 0.9, Enum.EasingStyle.Back, Enum.EasingDirection.Out), {
                     Position = UDim2.new(0, 0, 0, 0),
                     TextTransparency = 0
                 }):Play()
@@ -640,7 +668,7 @@ function SolsticeUI:Notify(text, dur)
 
     local gradLine = Instance.new("Frame")
     gradLine.Size = UDim2.new(1, 0, 0, 2)
-    gradLine.BackgroundColor3 = PALETTE.ActiveStart
+    gradLine.BackgroundColor3 = PALETTE.ActiveGradientStart
     gradLine.BorderSizePixel = 0
     gradLine.Parent = card
 
@@ -808,6 +836,11 @@ function SolsticeUI:CreateCategory(name, iconChar, position, features)
     end)
 
     table.insert(self.Panels, panelData)
+
+    -- Staggered load animation
+    local panelIndex = #self.Panels
+    self:_PlayPanelLoadAnimation(panel, panelIndex)
+
     return panelData
 end
 
@@ -841,10 +874,11 @@ function SolsticeUI:_CreateFeature(content, panelData, feat)
     Corner(btn, UDim.new(0, 2))
     if ui.Config.UseCustomFont then FontLoader.setFont(ui.Config.CustomFontName, btn) end
 
+    -- Active gradient overlay
     local activeGrad = Instance.new("UIGradient")
     activeGrad.Color = ColorSequence.new({
-        ColorSequenceKeypoint.new(0, PALETTE.ActiveStart),
-        ColorSequenceKeypoint.new(1, PALETTE.ActiveEnd)
+        ColorSequenceKeypoint.new(0, PALETTE.ActiveGradientStart),
+        ColorSequenceKeypoint.new(1, PALETTE.ActiveGradientEnd)
     })
     activeGrad.Rotation = 0
     activeGrad.Enabled = false
@@ -876,7 +910,7 @@ function SolsticeUI:_CreateFeature(content, panelData, feat)
     if ui.SavedConfig.modules and ui.SavedConfig.modules[feat.name] then
         enabled = ui.SavedConfig.modules[feat.name].state or false
         if enabled and featType ~= "button" then
-            -- Apply saved state visually
+            btn.BackgroundColor3 = PALETTE.ActiveBg
             btn.BackgroundTransparency = 0
             btn.TextColor3 = PALETTE.ActiveText
             activeGrad.Enabled = true
@@ -908,13 +942,16 @@ function SolsticeUI:_CreateFeature(content, panelData, feat)
         enabled = not enabled
         ui:_SetModuleState(feat.name, enabled)
         if enabled then
+            -- Solid pink background with gradient overlay
             Tween(btn, TweenInfo.new(0.15, Enum.EasingStyle.Quad, Enum.EasingDirection.Out), {
+                BackgroundColor3 = PALETTE.ActiveBg,
                 BackgroundTransparency = 0,
                 TextColor3 = PALETTE.ActiveText
             }):Play()
             activeGrad.Enabled = true
         else
             Tween(btn, TweenInfo.new(0.15, Enum.EasingStyle.Quad, Enum.EasingDirection.Out), {
+                BackgroundColor3 = PALETTE.ItemBg,
                 BackgroundTransparency = PALETTE.ItemBgTransparency,
                 TextColor3 = PALETTE.ItemText
             }):Play()
@@ -958,9 +995,10 @@ function SolsticeUI:_CreateFeature(content, panelData, feat)
 
     if featType == "button" then
         btn.MouseButton1Click:Connect(function()
-            Tween(btn, TweenInfo.new(0.08), {BackgroundTransparency = 0.12}):Play()
-            task.delay(0.08, function()
-                Tween(btn, TweenInfo.new(0.08), {BackgroundTransparency = PALETTE.ItemBgTransparency}):Play()
+            -- Press feedback: darker pink flash
+            Tween(btn, TweenInfo.new(0.06), {BackgroundColor3 = PALETTE.PressBg, BackgroundTransparency = 0}):Play()
+            task.delay(0.06, function()
+                Tween(btn, TweenInfo.new(0.1), {BackgroundColor3 = PALETTE.ItemBg, BackgroundTransparency = PALETTE.ItemBgTransparency}):Play()
             end)
             if feat.callback then pcall(feat.callback) end
             ui:Notify(feat.name .. " executed", 1.2)
@@ -1098,7 +1136,7 @@ function SolsticeUI:_CreateToggleSetting(frame, s, moduleName)
     end)
 end
 
--- ==================== SLIDER SETTING (ENHANCED) ====================
+-- ==================== SLIDER SETTING ====================
 function SolsticeUI:_CreateSliderSetting(frame, s, moduleName)
     local ui = self
 
@@ -1126,7 +1164,6 @@ function SolsticeUI:_CreateSliderSetting(frame, s, moduleName)
     valLbl.Parent = frame
     if ui.Config.UseCustomFont then FontLoader.setFont(ui.Config.CustomFontName, valLbl) end
 
-    -- Track
     local barBg = Instance.new("Frame")
     barBg.Size = UDim2.new(1, -16, 0, 3)
     barBg.Position = UDim2.new(0, 8, 0, 22)
@@ -1144,7 +1181,6 @@ function SolsticeUI:_CreateSliderSetting(frame, s, moduleName)
     fill.Parent = barBg
     Corner(fill, UDim.new(0.5, 0))
 
-    -- Hit area (larger for easier grabbing, from reference)
     local hitArea = Instance.new("TextButton")
     hitArea.Size = UDim2.new(1, 0, 1, 16)
     hitArea.Position = UDim2.new(0, 0, 0, -8)
@@ -1153,7 +1189,6 @@ function SolsticeUI:_CreateSliderSetting(frame, s, moduleName)
     hitArea.Parent = barBg
     hitArea.ZIndex = 10
 
-    -- Thumb
     local thumbSize = 10
     local thumb = Instance.new("Frame")
     thumb.Size = UDim2.new(0, thumbSize, 0, thumbSize)
@@ -1164,7 +1199,6 @@ function SolsticeUI:_CreateSliderSetting(frame, s, moduleName)
     thumb.Parent = barBg
     Corner(thumb, UDim.new(0.5, 0))
 
-    -- Glow ring
     local glowRing = Instance.new("Frame")
     glowRing.Size = UDim2.new(1, 6, 1, 6)
     glowRing.Position = UDim2.new(0, -3, 0, -3)
@@ -1175,7 +1209,6 @@ function SolsticeUI:_CreateSliderSetting(frame, s, moduleName)
     glowRing.Parent = thumb
     Corner(glowRing, UDim.new(0.5, 0))
 
-    -- Inner highlight
     local highlight = Instance.new("Frame")
     highlight.Size = UDim2.new(0.5, 0, 0.5, 0)
     highlight.Position = UDim2.new(0.25, 0, 0.15, 0)
