@@ -1,7 +1,7 @@
 -- ============================================================
--- SolsticeUI v2.0 - Pixel-Perfect Recreation
--- Features: Exact styling, smooth animations, mobile touch support
--- ArrayList slide animations, proper rounded corners, full palette
+-- SolsticeUI v3.0 - Pixel-Perfect Recreation
+-- Fixes: ArrayList bg+text layering, slider aesthetics, 
+--        settings readability, hover effects, smooth animations
 -- ============================================================
 
 local Players = game:GetService("Players")
@@ -17,69 +17,72 @@ local LocalPlayer = Players.LocalPlayer
 local SolsticeUI = {}
 SolsticeUI.__index = SolsticeUI
 
--- Exact color palette from screenshot analysis
+-- Refined color palette from detailed screenshot analysis
 local PALETTE = {
     -- Panel
-    PanelBg = Color3.fromRGB(20, 20, 24),
-    PanelBgTransparency = 0.06,
-    PanelBorder = Color3.fromRGB(42, 42, 50),
+    PanelBg = Color3.fromRGB(18, 18, 22),
+    PanelBgTransparency = 0.04,
+    PanelBorder = Color3.fromRGB(40, 40, 48),
 
     -- Header
-    HeaderBg = Color3.fromRGB(30, 30, 36),
-    HeaderText = Color3.fromRGB(190, 190, 195),
-    HeaderIcon = Color3.fromRGB(130, 130, 140),
+    HeaderBg = Color3.fromRGB(28, 28, 34),
+    HeaderText = Color3.fromRGB(195, 195, 200),
+    HeaderIcon = Color3.fromRGB(125, 125, 135),
 
     -- Item (unselected)
-    ItemBg = Color3.fromRGB(28, 28, 34),
-    ItemBgTransparency = 0.25,
-    ItemText = Color3.fromRGB(205, 205, 210),
+    ItemBg = Color3.fromRGB(26, 26, 32),
+    ItemBgTransparency = 0.2,
+    ItemText = Color3.fromRGB(210, 210, 215),
+    ItemHoverBg = Color3.fromRGB(38, 38, 46),
 
     -- Item (selected) - pink/purple gradient
-    ActiveStart = Color3.fromRGB(255, 170, 205),
-    ActiveEnd = Color3.fromRGB(215, 155, 245),
-    ActiveText = Color3.fromRGB(22, 22, 28),
+    ActiveStart = Color3.fromRGB(255, 165, 200),
+    ActiveEnd = Color3.fromRGB(210, 150, 240),
+    ActiveText = Color3.fromRGB(15, 15, 20),
 
     -- Settings
-    SettingBg = Color3.fromRGB(16, 16, 20),
-    SettingBgTransparency = 0.12,
-    SettingText = Color3.fromRGB(150, 150, 160),
-    SettingValue = Color3.fromRGB(215, 215, 220),
+    SettingBg = Color3.fromRGB(14, 14, 18),
+    SettingBgTransparency = 0.08,
+    SettingText = Color3.fromRGB(170, 170, 180),
+    SettingValue = Color3.fromRGB(225, 225, 230),
+    SettingHover = Color3.fromRGB(22, 22, 28),
 
     -- Slider
-    SliderTrack = Color3.fromRGB(50, 50, 58),
-    SliderFill = Color3.fromRGB(195, 195, 205),
+    SliderTrack = Color3.fromRGB(48, 48, 56),
+    SliderFill = Color3.fromRGB(190, 190, 200),
     SliderThumb = Color3.fromRGB(255, 255, 255),
-    SliderThumbGlow = Color3.fromRGB(255, 195, 225),
+    SliderThumbGlow = Color3.fromRGB(255, 190, 220),
 
     -- Toggle
-    ToggleOff = Color3.fromRGB(50, 50, 58),
-    ToggleOn = Color3.fromRGB(255, 155, 195),
+    ToggleOff = Color3.fromRGB(48, 48, 56),
+    ToggleOn = Color3.fromRGB(255, 150, 190),
     ToggleKnob = Color3.fromRGB(255, 255, 255),
 
     -- Search
-    SearchBg = Color3.fromRGB(26, 26, 32),
-    SearchPlaceholder = Color3.fromRGB(95, 95, 105),
+    SearchBg = Color3.fromRGB(24, 24, 30),
+    SearchPlaceholder = Color3.fromRGB(90, 90, 100),
 
     -- ArrayList
-    ArrayListBg = Color3.fromRGB(18, 18, 22),
-    ArrayListBgTransparency = 0.15,
+    ArrayListBg = Color3.fromRGB(16, 16, 20),
+    ArrayListBgTransparency = 0.12,
+    ArrayListText = Color3.fromRGB(255, 255, 255),
 
     -- Misc
-    Muted = Color3.fromRGB(115, 115, 125),
+    Muted = Color3.fromRGB(110, 110, 120),
     White = Color3.fromRGB(255, 255, 255),
-    Black = Color3.fromRGB(18, 18, 22),
+    Black = Color3.fromRGB(15, 15, 18),
 
     -- Notification
-    NotifBorder = Color3.fromRGB(255, 170, 205),
+    NotifBorder = Color3.fromRGB(255, 165, 200),
 }
 
 -- Default config
 local DEFAULT_CONFIG = {
-    PanelWidth = 138,
+    PanelWidth = 140,
     PanelHeaderHeight = 20,
     ItemHeight = 17,
     SettingHeight = 30,
-    SliderHeight = 38,
+    SliderHeight = 40,
 
     CornerRadius = UDim.new(0, 3),
     PanelCornerRadius = UDim.new(0, 4),
@@ -89,15 +92,15 @@ local DEFAULT_CONFIG = {
     TextSize = 12,
     HeaderTextSize = 12,
 
-    PanelSpacing = 152,
+    PanelSpacing = 155,
     StartX = 20,
     StartY = 45,
 
     ArrayListFont = Enum.Font.SourceSansBold,
     ArrayListTextSize = 14,
-    ArrayListItemHeight = 15,
+    ArrayListItemHeight = 16,
     ArrayListRainbowSpeed = 0.35,
-    ArrayListAnimSpeed = 0.25,
+    ArrayListAnimSpeed = 0.28,
 
     Parent = nil,
     ShowSearchBar = true,
@@ -135,7 +138,7 @@ local function GetTextWidth(text, font, size)
     return TextService:GetTextSize(text, size, font, Vector2.new(9999, 9999)).X
 end
 
--- ==================== DRAGGING (Mouse + Touch) ====================
+-- ==================== DRAGGING ====================
 local function MakeDraggable(frame, handle)
     handle = handle or frame
     local drag, dragStart, startPos, dragTouch
@@ -276,7 +279,7 @@ function SolsticeUI:_InitSearchBar()
     frame.Size = UDim2.new(0, 200, 0, 24)
     frame.Position = UDim2.new(0.5, -100, 0, 8)
     frame.BackgroundColor3 = PALETTE.SearchBg
-    frame.BackgroundTransparency = 0.08
+    frame.BackgroundTransparency = 0.06
     frame.BorderSizePixel = 0
     frame.Parent = self.ClickGui
     Corner(frame, UDim.new(0, 4))
@@ -284,7 +287,7 @@ function SolsticeUI:_InitSearchBar()
     local stroke = Instance.new("UIStroke")
     stroke.Color = PALETTE.PanelBorder
     stroke.Thickness = 1
-    stroke.Transparency = 0.5
+    stroke.Transparency = 0.45
     stroke.Parent = frame
 
     local icon = Instance.new("TextLabel")
@@ -335,7 +338,7 @@ function SolsticeUI:_FilterModules(query)
     end
 end
 
--- ==================== ARRAY LIST (with slide animations) ====================
+-- ==================== ARRAY LIST (FIXED: proper bg + text layering) ====================
 function SolsticeUI:_InitArrayList()
     self.ArrayListMaster = Instance.new("Frame")
     self.ArrayListMaster.Name = "ArrayListMaster"
@@ -380,36 +383,36 @@ function SolsticeUI:_UpdateArrayList()
 
     self.ArrayListMaster.Visible = true
 
-    -- Sort by text width (longest first)
+    -- Sort by text width (longest at top = LayoutOrder 1)
     table.sort(enabled, function(a, b)
         return GetTextWidth(a.display, self.Config.ArrayListFont, self.Config.ArrayListTextSize) >
                GetTextWidth(b.display, self.Config.ArrayListFont, self.Config.ArrayListTextSize)
     end)
 
-    -- Mark all existing items as potentially removed
     local activeNames = {}
     for _, data in ipairs(enabled) do
         activeNames[data.name] = true
     end
 
     -- Animate out removed items
-    for name, item in pairs(self.ArrayListItems) do
-        if not activeNames[name] and item.Visible then
-            item.Visible = false
-            -- Slide out animation
-            local bg = item:FindFirstChild("Bg")
-            if bg then
+    for name, itemFrame in pairs(self.ArrayListItems) do
+        if not activeNames[name] and itemFrame.Visible then
+            itemFrame.Visible = false
+            local bg = itemFrame:FindFirstChild("BgBar")
+            local txt = itemFrame:FindFirstChild("TextLabel")
+            if bg and txt then
+                local tw = GetTextWidth(txt.Text, self.Config.ArrayListFont, self.Config.ArrayListTextSize) + 10
                 TweenService:Create(bg, TweenInfo.new(self.Config.ArrayListAnimSpeed, Enum.EasingStyle.Quad, Enum.EasingDirection.In), {
-                    Position = UDim2.new(0, GetTextWidth(item.Text, self.Config.ArrayListFont, self.Config.ArrayListTextSize) + 20, 0, 0),
+                    Position = UDim2.new(0, tw + 30, 0, 0),
                     BackgroundTransparency = 1
                 }):Play()
-                TweenService:Create(item, TweenInfo.new(self.Config.ArrayListAnimSpeed, Enum.EasingStyle.Quad, Enum.EasingDirection.In), {
+                TweenService:Create(txt, TweenInfo.new(self.Config.ArrayListAnimSpeed, Enum.EasingStyle.Quad, Enum.EasingDirection.In), {
                     TextTransparency = 1
                 }):Play()
             end
-            task.delay(self.Config.ArrayListAnimSpeed, function()
-                if item and item.Parent then
-                    item.Visible = false
+            task.delay(self.Config.ArrayListAnimSpeed + 0.05, function()
+                if itemFrame and itemFrame.Parent then
+                    itemFrame.Visible = false
                 end
             end)
         end
@@ -417,69 +420,91 @@ function SolsticeUI:_UpdateArrayList()
 
     local maxW = 0
     for i, data in ipairs(enabled) do
-        local item = self.ArrayListItems[data.name]
+        local itemFrame = self.ArrayListItems[data.name]
         local isNew = false
 
-        if not item then
+        if not itemFrame then
             isNew = true
-            item = Instance.new("TextLabel")
-            item.Name = data.name .. "_AL"
-            item.BackgroundTransparency = 1
-            item.Font = self.Config.ArrayListFont
-            item.TextSize = self.Config.ArrayListTextSize
-            item.TextXAlignment = Enum.TextXAlignment.Right
-            item.TextTransparency = 1
-            item.Parent = self.ArrayListContent
+            itemFrame = Instance.new("Frame")
+            itemFrame.Name = data.name .. "_AL"
+            itemFrame.BackgroundTransparency = 1
+            itemFrame.ClipsDescendants = false
+            itemFrame.Parent = self.ArrayListContent
 
-            -- Background bar for each item
-            local bg = Instance.new("Frame")
-            bg.Name = "Bg"
-            bg.Size = UDim2.new(1, 0, 1, 0)
-            bg.Position = UDim2.new(0, 0, 0, 0)
-            bg.BackgroundColor3 = PALETTE.ArrayListBg
-            bg.BackgroundTransparency = 1
-            bg.BorderSizePixel = 0
-            bg.ZIndex = 0
-            bg.Parent = item
+            -- Background bar (behind text)
+            local bgBar = Instance.new("Frame")
+            bgBar.Name = "BgBar"
+            bgBar.Size = UDim2.new(0, 0, 1, 0)
+            bgBar.Position = UDim2.new(0, 0, 0, 0)
+            bgBar.BackgroundColor3 = PALETTE.ArrayListBg
+            bgBar.BackgroundTransparency = 1
+            bgBar.BorderSizePixel = 0
+            bgBar.ZIndex = 1
+            bgBar.Parent = itemFrame
 
-            self.ArrayListItems[data.name] = item
+            -- Text label (on top of bg)
+            local txt = Instance.new("TextLabel")
+            txt.Name = "TextLabel"
+            txt.Size = UDim2.new(0, 0, 1, 0)
+            txt.Position = UDim2.new(0, 0, 0, 0)
+            txt.BackgroundTransparency = 1
+            txt.Font = self.Config.ArrayListFont
+            txt.TextSize = self.Config.ArrayListTextSize
+            txt.TextXAlignment = Enum.TextXAlignment.Right
+            txt.TextTransparency = 1
+            txt.ZIndex = 2
+            txt.Parent = itemFrame
+
+            self.ArrayListItems[data.name] = itemFrame
         end
 
-        item.Text = data.display
-        item.Visible = true
-        item.LayoutOrder = i
+        itemFrame.Visible = true
+        itemFrame.LayoutOrder = i
 
-        local tw = GetTextWidth(data.display, self.Config.ArrayListFont, self.Config.ArrayListTextSize) + 8
+        local txt = itemFrame:FindFirstChild("TextLabel")
+        local bgBar = itemFrame:FindFirstChild("BgBar")
+
+        if txt then
+            txt.Text = data.display
+        end
+
+        local tw = GetTextWidth(data.display, self.Config.ArrayListFont, self.Config.ArrayListTextSize) + 10
         if tw > maxW then maxW = tw end
 
-        item.Size = UDim2.new(0, tw, 0, self.Config.ArrayListItemHeight)
+        itemFrame.Size = UDim2.new(0, tw, 0, self.Config.ArrayListItemHeight)
 
-        local bg = item:FindFirstChild("Bg")
-        if bg then
-            bg.Size = UDim2.new(0, tw, 1, 0)
+        if txt then
+            txt.Size = UDim2.new(0, tw, 1, 0)
+        end
+        if bgBar then
+            bgBar.Size = UDim2.new(0, tw, 1, 0)
         end
 
-        -- Animate in (slide from right)
+        -- Animate in
         if isNew then
-            item.Position = UDim2.new(0, tw + 20, 0, 0)
-            TweenService:Create(item, TweenInfo.new(self.Config.ArrayListAnimSpeed, Enum.EasingStyle.Quad, Enum.EasingDirection.Out), {
-                Position = UDim2.new(0, 0, 0, 0),
-                TextTransparency = 0
-            }):Play()
-            if bg then
-                bg.Position = UDim2.new(0, tw + 20, 0, 0)
-                TweenService:Create(bg, TweenInfo.new(self.Config.ArrayListAnimSpeed, Enum.EasingStyle.Quad, Enum.EasingDirection.Out), {
+            if bgBar then
+                bgBar.Position = UDim2.new(0, tw + 30, 0, 0)
+                TweenService:Create(bgBar, TweenInfo.new(self.Config.ArrayListAnimSpeed, Enum.EasingStyle.Quad, Enum.EasingDirection.Out), {
                     Position = UDim2.new(0, 0, 0, 0),
                     BackgroundTransparency = PALETTE.ArrayListBgTransparency
                 }):Play()
             end
+            if txt then
+                txt.Position = UDim2.new(0, tw + 30, 0, 0)
+                TweenService:Create(txt, TweenInfo.new(self.Config.ArrayListAnimSpeed, Enum.EasingStyle.Quad, Enum.EasingDirection.Out), {
+                    Position = UDim2.new(0, 0, 0, 0),
+                    TextTransparency = 0
+                }):Play()
+            end
         else
-            -- Reset transparency for re-showing items
-            item.TextTransparency = 0
-            item.Position = UDim2.new(0, 0, 0, 0)
-            if bg then
-                bg.BackgroundTransparency = PALETTE.ArrayListBgTransparency
-                bg.Position = UDim2.new(0, 0, 0, 0)
+            -- Reset for re-showing
+            if bgBar then
+                bgBar.Position = UDim2.new(0, 0, 0, 0)
+                bgBar.BackgroundTransparency = PALETTE.ArrayListBgTransparency
+            end
+            if txt then
+                txt.Position = UDim2.new(0, 0, 0, 0)
+                txt.TextTransparency = 0
             end
         end
     end
@@ -530,7 +555,7 @@ function SolsticeUI:Notify(text, dur)
     card.Size = UDim2.new(1, 0, 1, 0)
     card.Position = UDim2.new(0, tw + 40, 0, 0)
     card.BackgroundColor3 = PALETTE.PanelBg
-    card.BackgroundTransparency = 0.04
+    card.BackgroundTransparency = 0.03
     card.BorderSizePixel = 0
     card.Parent = holder
     Corner(card, UDim.new(0, 3))
@@ -538,7 +563,7 @@ function SolsticeUI:Notify(text, dur)
     local stroke = Instance.new("UIStroke")
     stroke.Color = PALETTE.NotifBorder
     stroke.Thickness = 1
-    stroke.Transparency = 0.6
+    stroke.Transparency = 0.55
     stroke.Parent = card
 
     local gradLine = Instance.new("Frame")
@@ -558,7 +583,6 @@ function SolsticeUI:Notify(text, dur)
     lbl.TextXAlignment = Enum.TextXAlignment.Center
     lbl.Parent = card
 
-    -- Pop in animation with Back easing
     TweenService:Create(card, TweenInfo.new(0.4, Enum.EasingStyle.Back, Enum.EasingDirection.Out), {
         Position = UDim2.new(0, 0, 0, 0)
     }):Play()
@@ -584,10 +608,13 @@ function SolsticeUI:_StartRenderLoop()
     RunService.RenderStepped:Connect(function(dt)
         if self.ARRAYLIST_ENABLED then
             self.RainbowOffset = (self.RainbowOffset + dt * self.Config.ArrayListRainbowSpeed) % 1
-            for name, item in pairs(self.ArrayListItems) do
-                if item.Visible then
-                    local hue = (self.RainbowOffset + (item.LayoutOrder - 1) * 0.055) % 1
-                    item.TextColor3 = HSVtoRGB(hue, 0.78, 1)
+            for name, itemFrame in pairs(self.ArrayListItems) do
+                if itemFrame.Visible then
+                    local txt = itemFrame:FindFirstChild("TextLabel")
+                    if txt then
+                        local hue = (self.RainbowOffset + (itemFrame.LayoutOrder - 1) * 0.055) % 1
+                        txt.TextColor3 = HSVtoRGB(hue, 0.78, 1)
+                    end
                 end
             end
         end
@@ -618,7 +645,6 @@ function SolsticeUI:CreateCategory(name, iconChar, position, features)
         CurrentExpandedHeight = self.Config.PanelHeaderHeight,
     }
 
-    -- Main panel
     local panel = Instance.new("Frame")
     panel.Name = name .. "Panel"
     panel.Size = UDim2.new(0, self.Config.PanelWidth, 0, self.Config.PanelHeaderHeight)
@@ -629,21 +655,19 @@ function SolsticeUI:CreateCategory(name, iconChar, position, features)
     panel.Parent = self.ClickGui
     Corner(panel, self.Config.PanelCornerRadius)
 
-    -- Border stroke
     local stroke = Instance.new("UIStroke")
     stroke.Color = PALETTE.PanelBorder
     stroke.Thickness = 1
-    stroke.Transparency = 0.45
+    stroke.Transparency = 0.4
     stroke.Parent = panel
 
     panelData.Instance = panel
 
-    -- Header
     local header = Instance.new("TextButton")
     header.Name = "Header"
     header.Size = UDim2.new(1, 0, 0, self.Config.PanelHeaderHeight)
     header.BackgroundColor3 = PALETTE.HeaderBg
-    header.BackgroundTransparency = 0.15
+    header.BackgroundTransparency = 0.12
     header.BorderSizePixel = 0
     header.Text = ""
     header.AutoButtonColor = false
@@ -672,7 +696,6 @@ function SolsticeUI:CreateCategory(name, iconChar, position, features)
     title.TextXAlignment = Enum.TextXAlignment.Left
     title.Parent = header
 
-    -- Content area
     local content = Instance.new("Frame")
     content.Name = "Content"
     content.Size = UDim2.new(1, 0, 1, -self.Config.PanelHeaderHeight)
@@ -701,7 +724,6 @@ function SolsticeUI:CreateCategory(name, iconChar, position, features)
     header.MouseButton1Click:Connect(function() panelData:ToggleCollapse() end)
     MakeDraggable(panel, header)
 
-    -- Create all features
     for i, feat in ipairs(features or {}) do
         ui:_CreateFeature(content, panelData, feat)
     end
@@ -729,7 +751,6 @@ function SolsticeUI:_CreateFeature(content, panelData, feat)
     modLayout.Padding = UDim.new(0, 0)
     modLayout.Parent = modContainer
 
-    -- Main button with subtle background
     local btn = Instance.new("TextButton")
     btn.Name = feat.name
     btn.Size = UDim2.new(1, 0, 0, ui.Config.ItemHeight)
@@ -744,7 +765,6 @@ function SolsticeUI:_CreateFeature(content, panelData, feat)
     btn.Parent = modContainer
     Corner(btn, UDim.new(0, 2))
 
-    -- Active gradient (horizontal pink -> purple)
     local activeGrad = Instance.new("UIGradient")
     activeGrad.Color = ColorSequence.new({
         ColorSequenceKeypoint.new(0, PALETTE.ActiveStart),
@@ -754,7 +774,6 @@ function SolsticeUI:_CreateFeature(content, panelData, feat)
     activeGrad.Enabled = false
     activeGrad.Parent = btn
 
-    -- Settings indicator
     local hasSettings = feat.settings and #feat.settings > 0
     local indicator = nil
     if hasSettings then
@@ -777,7 +796,24 @@ function SolsticeUI:_CreateFeature(content, panelData, feat)
     local settingsContainer = nil
     local setHeight = 0
 
-    -- Toggle logic
+    -- Hover effects
+    btn.MouseEnter:Connect(function()
+        if not enabled then
+            TweenService:Create(btn, TweenInfo.new(0.12), {
+                BackgroundColor3 = PALETTE.ItemHoverBg,
+                BackgroundTransparency = 0.15
+            }):Play()
+        end
+    end)
+    btn.MouseLeave:Connect(function()
+        if not enabled then
+            TweenService:Create(btn, TweenInfo.new(0.12), {
+                BackgroundColor3 = PALETTE.ItemBg,
+                BackgroundTransparency = PALETTE.ItemBgTransparency
+            }):Play()
+        end
+    end)
+
     local function doToggle()
         if featType == "button" then return end
         enabled = not enabled
@@ -800,7 +836,6 @@ function SolsticeUI:_CreateFeature(content, panelData, feat)
         if feat.callback then pcall(feat.callback, enabled) end
     end
 
-    -- Settings expand/collapse with animation
     local function toggleSettings()
         if not settingsContainer then return end
         settingsExpanded = not settingsExpanded
@@ -832,10 +867,9 @@ function SolsticeUI:_CreateFeature(content, panelData, feat)
         end
     end
 
-    -- Click handlers
     if featType == "button" then
         btn.MouseButton1Click:Connect(function()
-            TweenService:Create(btn, TweenInfo.new(0.08), {BackgroundTransparency = 0.15}):Play()
+            TweenService:Create(btn, TweenInfo.new(0.08), {BackgroundTransparency = 0.12}):Play()
             task.delay(0.08, function()
                 TweenService:Create(btn, TweenInfo.new(0.08), {BackgroundTransparency = PALETTE.ItemBgTransparency}):Play()
             end)
@@ -974,7 +1008,7 @@ function SolsticeUI:_CreateToggleSetting(frame, s)
     end)
 end
 
--- ==================== SLIDER SETTING ====================
+-- ==================== SLIDER SETTING (ENHANCED) ====================
 function SolsticeUI:_CreateSliderSetting(frame, s)
     local ui = self
 
@@ -1000,8 +1034,9 @@ function SolsticeUI:_CreateSliderSetting(frame, s)
     valLbl.TextXAlignment = Enum.TextXAlignment.Right
     valLbl.Parent = frame
 
+    -- Track background
     local barBg = Instance.new("Frame")
-    barBg.Size = UDim2.new(1, -16, 0, 2)
+    barBg.Size = UDim2.new(1, -16, 0, 3)
     barBg.Position = UDim2.new(0, 8, 0, 22)
     barBg.BackgroundColor3 = PALETTE.SliderTrack
     barBg.BorderSizePixel = 0
@@ -1009,6 +1044,8 @@ function SolsticeUI:_CreateSliderSetting(frame, s)
     Corner(barBg, UDim.new(0.5, 0))
 
     local pct = (s.default - s.min) / (s.max - s.min)
+
+    -- Fill bar
     local fill = Instance.new("Frame")
     fill.Size = UDim2.new(pct, 0, 1, 0)
     fill.BackgroundColor3 = PALETTE.SliderFill
@@ -1016,25 +1053,38 @@ function SolsticeUI:_CreateSliderSetting(frame, s)
     fill.Parent = barBg
     Corner(fill, UDim.new(0.5, 0))
 
-    local thumbSize = 8
+    -- Thumb (larger, more visible)
+    local thumbSize = 10
     local thumb = Instance.new("Frame")
     thumb.Size = UDim2.new(0, thumbSize, 0, thumbSize)
     thumb.Position = UDim2.new(pct, -thumbSize/2, 0.5, -thumbSize/2)
     thumb.BackgroundColor3 = PALETTE.SliderThumb
     thumb.BorderSizePixel = 0
-    thumb.ZIndex = 3
+    thumb.ZIndex = 5
     thumb.Parent = barBg
     Corner(thumb, UDim.new(0.5, 0))
 
-    local glow = Instance.new("Frame")
-    glow.Size = UDim2.new(1, 4, 1, 4)
-    glow.Position = UDim2.new(0, -2, 0, -2)
-    glow.BackgroundColor3 = PALETTE.SliderThumbGlow
-    glow.BackgroundTransparency = 0.65
-    glow.BorderSizePixel = 0
-    glow.ZIndex = 2
-    glow.Parent = thumb
-    Corner(glow, UDim.new(0.5, 0))
+    -- Outer glow ring
+    local glowRing = Instance.new("Frame")
+    glowRing.Size = UDim2.new(1, 6, 1, 6)
+    glowRing.Position = UDim2.new(0, -3, 0, -3)
+    glowRing.BackgroundColor3 = PALETTE.SliderThumbGlow
+    glowRing.BackgroundTransparency = 0.7
+    glowRing.BorderSizePixel = 0
+    glowRing.ZIndex = 4
+    glowRing.Parent = thumb
+    Corner(glowRing, UDim.new(0.5, 0))
+
+    -- Inner highlight
+    local highlight = Instance.new("Frame")
+    highlight.Size = UDim2.new(0.5, 0, 0.5, 0)
+    highlight.Position = UDim2.new(0.25, 0, 0.15, 0)
+    highlight.BackgroundColor3 = Color3.fromRGB(255, 255, 255)
+    highlight.BackgroundTransparency = 0.3
+    highlight.BorderSizePixel = 0
+    highlight.ZIndex = 6
+    highlight.Parent = thumb
+    Corner(highlight, UDim.new(0.5, 0))
 
     local dragging = false
     local dragTouch = nil
@@ -1043,8 +1093,17 @@ function SolsticeUI:_CreateSliderSetting(frame, s)
         local relX = inputPos.X - barBg.AbsolutePosition.X
         local sliderX = math.clamp(relX, 0, barBg.AbsoluteSize.X)
         local newPct = sliderX / math.max(barBg.AbsoluteSize.X, 1)
-        fill.Size = UDim2.new(newPct, 0, 1, 0)
-        thumb.Position = UDim2.new(newPct, -thumbSize/2, 0.5, -thumbSize/2)
+
+        -- Smooth fill animation
+        TweenService:Create(fill, TweenInfo.new(0.05), {
+            Size = UDim2.new(newPct, 0, 1, 0)
+        }):Play()
+
+        -- Smooth thumb animation
+        TweenService:Create(thumb, TweenInfo.new(0.05), {
+            Position = UDim2.new(newPct, -thumbSize/2, 0.5, -thumbSize/2)
+        }):Play()
+
         local val = s.min + (s.max - s.min) * newPct
         val = math.floor(val * 100) / 100
         valLbl.Text = string.format("%.2f", val)
@@ -1059,6 +1118,9 @@ function SolsticeUI:_CreateSliderSetting(frame, s)
             or input.UserInputType == Enum.UserInputType.Touch then
             dragging = true
             dragTouch = input.UserInputType == Enum.UserInputType.Touch and input or nil
+            -- Thumb pulse on grab
+            TweenService:Create(thumb, TweenInfo.new(0.1), {Size = UDim2.new(0, thumbSize+2, 0, thumbSize+2)}):Play()
+            TweenService:Create(glowRing, TweenInfo.new(0.1), {BackgroundTransparency = 0.4, Size = UDim2.new(1, 10, 1, 10), Position = UDim2.new(0, -5, 0, -5)}):Play()
             updateSlider(input.Position)
         end
     end)
@@ -1081,7 +1143,18 @@ function SolsticeUI:_CreateSliderSetting(frame, s)
             elseif not dragTouch then
                 dragging = false
             end
+            -- Thumb release animation
+            TweenService:Create(thumb, TweenInfo.new(0.15), {Size = UDim2.new(0, thumbSize, 0, thumbSize)}):Play()
+            TweenService:Create(glowRing, TweenInfo.new(0.15), {BackgroundTransparency = 0.7, Size = UDim2.new(1, 6, 1, 6), Position = UDim2.new(0, -3, 0, -3)}):Play()
         end
+    end)
+
+    -- Hover effect on track
+    frame.MouseEnter:Connect(function()
+        TweenService:Create(barBg, TweenInfo.new(0.15), {BackgroundColor3 = Color3.fromRGB(58, 58, 68)}):Play()
+    end)
+    frame.MouseLeave:Connect(function()
+        TweenService:Create(barBg, TweenInfo.new(0.15), {BackgroundColor3 = PALETTE.SliderTrack}):Play()
     end)
 end
 
@@ -1090,8 +1163,8 @@ function SolsticeUI:_CreateButtonSetting(frame, s)
     local ui = self
     local btn = Instance.new("TextButton")
     btn.Size = UDim2.new(1, 0, 1, 0)
-    btn.BackgroundColor3 = Color3.fromRGB(52, 52, 60)
-    btn.BackgroundTransparency = 0.35
+    btn.BackgroundColor3 = Color3.fromRGB(50, 50, 58)
+    btn.BackgroundTransparency = 0.3
     btn.BorderSizePixel = 0
     btn.Text = s.name
     btn.TextColor3 = PALETTE.SettingValue
@@ -1100,10 +1173,17 @@ function SolsticeUI:_CreateButtonSetting(frame, s)
     btn.Parent = frame
     Corner(btn, UDim.new(0, 2))
 
+    btn.MouseEnter:Connect(function()
+        TweenService:Create(btn, TweenInfo.new(0.12), {BackgroundTransparency = 0.1}):Play()
+    end)
+    btn.MouseLeave:Connect(function()
+        TweenService:Create(btn, TweenInfo.new(0.12), {BackgroundTransparency = 0.3}):Play()
+    end)
+
     btn.MouseButton1Click:Connect(function()
-        TweenService:Create(btn, TweenInfo.new(0.08), {BackgroundTransparency = 0.08}):Play()
+        TweenService:Create(btn, TweenInfo.new(0.08), {BackgroundTransparency = 0.05}):Play()
         task.delay(0.08, function()
-            TweenService:Create(btn, TweenInfo.new(0.08), {BackgroundTransparency = 0.35}):Play()
+            TweenService:Create(btn, TweenInfo.new(0.08), {BackgroundTransparency = 0.1}):Play()
         end)
         if s.callback then pcall(s.callback) end
     end)
@@ -1198,6 +1278,13 @@ function SolsticeUI:_CreateColorSetting(frame, s)
         box.Text = ""
         box.Parent = frame
         Corner(box, UDim.new(0, 2))
+
+        box.MouseEnter:Connect(function()
+            TweenService:Create(box, TweenInfo.new(0.1), {Size = UDim2.new(0, boxSize+2, 0, boxSize+2), Position = UDim2.new(0, startX + (i-1) * (boxSize + spacing) - 1, 0.5, -boxSize/2 - 1)}):Play()
+        end)
+        box.MouseLeave:Connect(function()
+            TweenService:Create(box, TweenInfo.new(0.1), {Size = UDim2.new(0, boxSize, 0, boxSize), Position = UDim2.new(0, startX + (i-1) * (boxSize + spacing), 0.5, -boxSize/2)}):Play()
+        end)
 
         box.MouseButton1Click:Connect(function()
             if s.callback then pcall(s.callback, color) end
