@@ -240,7 +240,7 @@ function SolsticeUI:_InitWatermark()
     moixel.Size = UDim2.new(1, 0, 0, 22)
     moixel.Position = UDim2.new(0, 0, 0, 0)
     moixel.BackgroundTransparency = 1
-    moixel.Text = "Moixel"
+    moixel.Text = "Lyy's family all die"
     moixel.TextColor3 = Color3.fromRGB(200, 200, 205)
     moixel.Font = Enum.Font.SourceSansBold
     moixel.TextSize = 20
@@ -251,7 +251,7 @@ function SolsticeUI:_InitWatermark()
     bilibili.Size = UDim2.new(1, 0, 0, 18)
     bilibili.Position = UDim2.new(0, 0, 0, 20)
     bilibili.BackgroundTransparency = 1
-    bilibili.Text = "bilibili"
+    bilibili.Text = "Dev"
     bilibili.TextColor3 = Color3.fromRGB(180, 180, 185)
     bilibili.Font = Enum.Font.SourceSansItalic
     bilibili.TextSize = 16
@@ -262,7 +262,7 @@ function SolsticeUI:_InitWatermark()
     solstice.Size = UDim2.new(1, 0, 0, 18)
     solstice.Position = UDim2.new(0, 0, 0, 38)
     solstice.BackgroundTransparency = 1
-    solstice.Text = "Solstice"
+    solstice.Text = "Yuxingchen"
     solstice.TextColor3 = Color3.fromRGB(160, 160, 170)
     solstice.Font = Enum.Font.SourceSansItalic
     solstice.TextSize = 16
