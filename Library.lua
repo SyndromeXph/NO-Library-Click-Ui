@@ -1,6 +1,6 @@
 -- ============================================================
--- SolsticeUI v6.0 - Animation & Polish Overhaul
--- Optimized click feedback, smooth toggles, spring physics
+-- SolsticeUI v7.0 - Full Overhaul (Inspired by Vape V4)
+-- Complete feature parity + original polish
 -- ============================================================
 
 local Players = game:GetService("Players")
@@ -10,6 +10,7 @@ local RunService = game:GetService("RunService")
 local CoreGui = game:GetService("CoreGui")
 local TextService = game:GetService("TextService")
 local HttpService = game:GetService("HttpService")
+local Lighting = game:GetService("Lighting")
 
 local LocalPlayer = Players.LocalPlayer
 
@@ -96,6 +97,14 @@ local PALETTE = {
     White = Color3.fromRGB(255, 255, 255),
     Black = Color3.fromRGB(15, 15, 18),
     NotifBorder = Color3.fromRGB(255, 165, 200),
+
+    TooltipBg = Color3.fromRGB(26, 25, 26),
+    TooltipText = Color3.fromRGB(200, 200, 200),
+
+    WindowBg = Color3.fromRGB(25, 26, 25),
+    WindowHeader = Color3.fromRGB(20, 20, 20),
+    WindowChildren = Color3.fromRGB(26, 25, 26),
+    Divider = Color3.fromRGB(37, 37, 37),
 }
 
 -- ==================== ANIMATION PRESETS ====================
@@ -111,26 +120,31 @@ local ANIM = {
     NotifyIn = TweenInfo.new(0.4, Enum.EasingStyle.Back, Enum.EasingDirection.Out),
     NotifyOut = TweenInfo.new(0.3, Enum.EasingStyle.Quad, Enum.EasingDirection.In),
     PanelLoad = TweenInfo.new(0.45, Enum.EasingStyle.Back, Enum.EasingDirection.Out),
+    Fade = TweenInfo.new(0.2, Enum.EasingStyle.Quad, Enum.EasingDirection.Out),
+    Pulse = TweenInfo.new(0.4, Enum.EasingStyle.Quad, Enum.EasingDirection.Out, -1, true),
 }
 
 local DEFAULT_CONFIG = {
-    PanelWidth = 140,
-    PanelHeaderHeight = 20,
-    ItemHeight = 17,
+    PanelWidth = 220,
+    PanelHeaderHeight = 41,
+    ItemHeight = 40,
     SettingHeight = 30,
-    SliderHeight = 40,
+    SliderHeight = 50,
+    TwoSliderHeight = 50,
 
-    CornerRadius = UDim.new(0, 3),
+    CornerRadius = UDim.new(0, 4),
     PanelCornerRadius = UDim.new(0, 4),
 
-    Font = Enum.Font.SourceSansSemibold,
+    Font = Enum.Font.SourceSans,
+    FontBold = Enum.Font.SourceSansBold,
     FontItalic = Enum.Font.SourceSansItalic,
-    TextSize = 12,
-    HeaderTextSize = 12,
+    TextSize = 17,
+    HeaderTextSize = 17,
+    SettingTextSize = 16,
 
-    PanelSpacing = 155,
-    StartX = 20,
-    StartY = 45,
+    PanelSpacing = 235,
+    StartX = 6,
+    StartY = 6,
 
     ArrayListFont = Enum.Font.SourceSansBold,
     ArrayListTextSize = 14,
@@ -146,15 +160,21 @@ local DEFAULT_CONFIG = {
     ShowArrayList = true,
     ShowNotifications = true,
     ShowWatermark = true,
+    ShowTooltips = true,
+    ShowBlur = true,
 
     SaveConfig = true,
     ConfigPath = "SolsticeUI/config.json",
+    ProfilesPath = "SolsticeUI/profiles/",
 
     LoadAnimDelay = 0.06,
     LoadAnimDuration = 0.4,
     ClickScale = 0.96,
     ClickScaleDuration = 0.06,
     ClickRestoreDuration = 0.12,
+
+    GUIScale = 1,
+    GUIKeybind = "RightShift",
 }
 
 -- ==================== UTILITIES ====================
@@ -190,18 +210,31 @@ local function Tween(obj, info, props)
     return TweenService:Create(obj, info, props)
 end
 
--- ==================== DRAGGING ====================
-local function MakeDraggable(frame, handle)
+local function randomString()
+    local length = math.random(10, 100)
+    local arr = {}
+    for i = 1, length do
+        arr[i] = string.char(math.random(32, 126))
+    end
+    return table.concat(arr)
+end
+
+-- ==================== DRAGGING (Vape Style) ====================
+local function MakeDraggable(frame, handle, rescale)
     handle = handle or frame
+    rescale = rescale or 1
     local drag, dragStart, startPos, dragTouch
 
     handle.InputBegan:Connect(function(input)
         if input.UserInputType == Enum.UserInputType.MouseButton1
             or input.UserInputType == Enum.UserInputType.Touch then
-            drag = true
-            dragTouch = input.UserInputType == Enum.UserInputType.Touch and input or nil
-            dragStart = input.Position
-            startPos = frame.Position
+            local delta = (input.Position - Vector3.new(handle.AbsolutePosition.X, handle.AbsolutePosition.Y, 0))
+            if delta.Y <= 30 * rescale then
+                drag = true
+                dragTouch = input.UserInputType == Enum.UserInputType.Touch and input or nil
+                dragStart = input.Position
+                startPos = frame.Position
+            end
         end
     end)
 
@@ -213,8 +246,13 @@ local function MakeDraggable(frame, handle)
             return
         end
         local delta = input.Position - dragStart
-        frame.Position = UDim2.new(startPos.X.Scale, startPos.X.Offset + delta.X,
-                                    startPos.Y.Scale, startPos.Y.Offset + delta.Y)
+        local pos = UDim2.new(
+            startPos.X.Scale, 
+            startPos.X.Offset + (delta.X * (1 / rescale)),
+            startPos.Y.Scale, 
+            startPos.Y.Offset + (delta.Y * (1 / rescale))
+        )
+        Tween(frame, TweenInfo.new(0.2), {Position = pos}):Play()
     end)
 
     UserInputService.InputEnded:Connect(function(input)
@@ -236,12 +274,34 @@ function SolsticeUI.new(userConfig)
         for k, v in pairs(userConfig) do self.Config[k] = v end
     end
 
+    -- Profiles system (Vape style)
+    self.Profiles = {["default"] = {["Keybind"] = "", ["Selected"] = true}}
+    self.CurrentProfile = "default"
+    self.KeybindCaptured = false
+    self.PressedKeybindKey = ""
+
+    -- Saved config
     self.SavedConfig = {}
-    if self.Config.SaveConfig and isfile(self.Config.ConfigPath) then
-        local success, decoded = pcall(function()
-            return HttpService:JSONDecode(readfile(self.Config.ConfigPath))
-        end)
-        if success then self.SavedConfig = decoded end
+    if self.Config.SaveConfig then
+        if isfile(self.Config.ConfigPath) then
+            local success, decoded = pcall(function()
+                return HttpService:JSONDecode(readfile(self.Config.ConfigPath))
+            end)
+            if success then 
+                self.SavedConfig = decoded 
+                if decoded.Profiles then
+                    self.Profiles = decoded.Profiles
+                end
+                if decoded.CurrentProfile then
+                    self.CurrentProfile = decoded.CurrentProfile
+                end
+                if decoded.GUIKeybind then
+                    self.Config.GUIKeybind = decoded.GUIKeybind
+                end
+            end
+        end
+        if not isfolder("SolsticeUI") then makefolder("SolsticeUI") end
+        if not isfolder(self.Config.ProfilesPath) then makefolder(self.Config.ProfilesPath) end
     end
 
     local TargetParent = self.Config.Parent
@@ -254,34 +314,59 @@ function SolsticeUI.new(userConfig)
     end
 
     self.ClickGui = Instance.new("ScreenGui")
-    self.ClickGui.Name = "SolsticeClickGUI"
+    self.ClickGui.Name = randomString()
     self.ClickGui.ResetOnSpawn = false
     self.ClickGui.ZIndexBehavior = Enum.ZIndexBehavior.Sibling
+    self.ClickGui.DisplayOrder = 999
     self.ClickGui.Parent = TargetParent
+    pcall(function()
+        if syn and syn.protect_gui then
+            syn.protect_gui(self.ClickGui)
+        end
+    end)
 
     self.HudGui = Instance.new("ScreenGui")
-    self.HudGui.Name = "SolsticeHUD"
+    self.HudGui.Name = randomString()
     self.HudGui.ResetOnSpawn = false
     self.HudGui.ZIndexBehavior = Enum.ZIndexBehavior.Sibling
     self.HudGui.Parent = TargetParent
 
+    -- UIScale support (Vape style)
+    self.MainRescale = Instance.new("UIScale")
+    self.MainRescale.Scale = self.Config.GUIScale
+    self.MainRescale.Parent = self.ClickGui
+
+    -- Blur effect (Vape style)
+    self.MainBlur = Instance.new("BlurEffect")
+    self.MainBlur.Size = 25
+    self.MainBlur.Parent = Lighting
+    self.MainBlur.Enabled = false
+
     self.GUI_ENABLED = true
     self.ARRAYLIST_ENABLED = self.Config.ShowArrayList
+    self.TOOLTIPS_ENABLED = self.Config.ShowTooltips
     self.EnabledModules = {}
     self.AllModules = {}
     self.Panels = {}
+    self.Windows = {}
+    self.CustomWindows = {}
     self.ArrayListItems = {}
     self.RainbowOffset = 0
+    self.RainbowValue = 0
     self.NextPanelX = self.Config.StartX
     self.NextPanelY = self.Config.StartY
     self.PanelLoadQueue = {}
+    self.CapturedSlider = nil
+    self.HoldingControl = false
 
     self:_InitWatermark()
     self:_InitSearchBar()
     self:_InitArrayList()
     self:_InitNotifications()
+    self:_InitTooltip()
     self:_StartRenderLoop()
     self:_BindToggleKey()
+    self:_BindInputHandlers()
     self:_StartConfigSaver()
 
     return self
@@ -290,14 +375,39 @@ end
 -- ==================== CONFIG SAVER ====================
 function SolsticeUI:_StartConfigSaver()
     if not self.Config.SaveConfig then return end
-    if not isfolder("SolsticeUI") then makefolder("SolsticeUI") end
 
     task.spawn(function()
         repeat
             task.wait(5)
             if self.Config.SaveConfig then
+                local data = {
+                    modules = self.SavedConfig.modules or {},
+                    Profiles = self.Profiles,
+                    CurrentProfile = self.CurrentProfile,
+                    GUIKeybind = self.Config.GUIKeybind,
+                    Windows = {},
+                    CustomWindows = {},
+                }
+                -- Save window positions
+                for name, win in pairs(self.Windows) do
+                    data.Windows[name] = {
+                        Position = {win.Object.Position.X.Scale, win.Object.Position.X.Offset, 
+                                   win.Object.Position.Y.Scale, win.Object.Position.Y.Offset},
+                        Visible = win.Object.Visible,
+                        Expanded = win.ChildrenObject.Visible,
+                    }
+                end
+                for name, win in pairs(self.CustomWindows) do
+                    data.CustomWindows[name] = {
+                        Position = {win.Object.Position.X.Scale, win.Object.Position.X.Offset,
+                                   win.Object.Position.Y.Scale, win.Object.Position.Y.Offset},
+                        Visible = win.Object.Visible,
+                        Pinned = win.Api.Pinned,
+                    }
+                end
+
                 local success, encoded = pcall(function()
-                    return HttpService:JSONEncode(self.SavedConfig)
+                    return HttpService:JSONEncode(data)
                 end)
                 if success then
                     pcall(function() writefile(self.Config.ConfigPath, encoded) end)
@@ -310,6 +420,31 @@ end
 function SolsticeUI:_SaveModuleState(name, state, value)
     if not self.SavedConfig.modules then self.SavedConfig.modules = {} end
     self.SavedConfig.modules[name] = {state = state, value = value}
+end
+
+-- ==================== PROFILES ====================
+function SolsticeUI:SwitchProfile(profilename)
+    self.Profiles[self.CurrentProfile]["Selected"] = false
+    self.Profiles[profilename]["Selected"] = true
+    self.CurrentProfile = profilename
+    self:_SaveConfig()
+    self:Notify("Switched to profile: " .. profilename, 2)
+end
+
+function SolsticeUI:_SaveConfig()
+    if not self.Config.SaveConfig then return end
+    local data = {
+        modules = self.SavedConfig.modules or {},
+        Profiles = self.Profiles,
+        CurrentProfile = self.CurrentProfile,
+        GUIKeybind = self.Config.GUIKeybind,
+    }
+    local success, encoded = pcall(function()
+        return HttpService:JSONEncode(data)
+    end)
+    if success then
+        pcall(function() writefile(self.Config.ConfigPath, encoded) end)
+    end
 end
 
 -- ==================== LOADING ANIMATION ====================
@@ -333,6 +468,36 @@ function SolsticeUI:_PlayPanelLoadAnimation(panel, index)
                 panel.Position.Y.Offset - 25
             )
         }):Play()
+    end)
+end
+
+function SolsticeUI:LoadedAnimation()
+    local welcometext = Instance.new("TextLabel")
+    welcometext.Name = "WelcomeText"
+    welcometext.Size = UDim2.new(0, 300, 0, 25)
+    welcometext.TextXAlignment = Enum.TextXAlignment.Left
+    welcometext.Position = UDim2.new(0, 2, 0.05, 1)
+    welcometext.BackgroundTransparency = 1
+    welcometext.TextSize = 25
+    welcometext.Text = "Press " .. self.Config.GUIKeybind .. " to open GUI"
+    welcometext.TextColor3 = Color3.fromRGB(27, 42, 53)
+    welcometext.Font = self.Config.Font
+    welcometext.Parent = self.ClickGui
+
+    local welcometext2 = welcometext:Clone()
+    welcometext2.Position = UDim2.new(0, -1, 0, -1)
+    welcometext2.TextColor3 = PALETTE.ActiveGradientStart
+    welcometext2:GetPropertyChangedSignal("TextTransparency"):Connect(function()
+        welcometext.TextTransparency = welcometext2.TextTransparency
+    end)
+    welcometext2.Parent = welcometext
+
+    self:Notify("Finished Loading", "Press " .. string.upper(self.Config.GUIKeybind) .. " to open GUI", 4)
+
+    task.delay(2.5, function()
+        Tween(welcometext2, TweenInfo.new(2), {TextTransparency = 1}):Play()
+        task.wait(2)
+        if welcometext then welcometext:Destroy() end
     end)
 end
 
@@ -449,6 +614,51 @@ function SolsticeUI:_FilterModules(query)
                 end
             end
         end
+    end
+    for _, winData in pairs(self.Windows) do
+        local children = winData.ChildrenObject
+        if children then
+            for _, child in ipairs(children:GetChildren()) do
+                if child:IsA("TextButton") then
+                    local btnText = child:FindFirstChild("ButtonText")
+                    if btnText then
+                        child.Visible = query == "" or string.find(string.lower(btnText.Text), query, 1, true) ~= nil
+                    end
+                end
+            end
+        end
+    end
+end
+
+-- ==================== TOOLTIP ====================
+function SolsticeUI:_InitTooltip()
+    if not self.Config.ShowTooltips then return end
+
+    self.TooltipBox = Instance.new("TextLabel")
+    self.TooltipBox.BackgroundColor3 = PALETTE.TooltipBg
+    self.TooltipBox.Active = false
+    self.TooltipBox.Text = "Placeholder"
+    self.TooltipBox.ZIndex = 100
+    self.TooltipBox.TextColor3 = PALETTE.TooltipText
+    self.TooltipBox.Font = self.Config.Font
+    self.TooltipBox.TextSize = 16
+    self.TooltipBox.Visible = false
+    self.TooltipBox.Parent = self.ClickGui
+    Corner(self.TooltipBox, UDim.new(0, 4))
+end
+
+function SolsticeUI:ShowTooltip(text, x, y)
+    if not self.TOOLTIPS_ENABLED or not self.TooltipBox then return end
+    local textsize = TextService:GetTextSize(text, 16, self.TooltipBox.Font, Vector2.new(99999, 99999))
+    self.TooltipBox.Text = text
+    self.TooltipBox.Size = UDim2.new(0, 13 + textsize.X, 0, textsize.Y + 5)
+    self.TooltipBox.Position = UDim2.new(0, x + 16, 0, y - (self.TooltipBox.Size.Y.Offset / 2) - 26)
+    self.TooltipBox.Visible = true
+end
+
+function SolsticeUI:HideTooltip()
+    if self.TooltipBox then
+        self.TooltipBox.Visible = false
     end
 end
 
@@ -650,74 +860,98 @@ function SolsticeUI:_InitNotifications()
     layout.VerticalAlignment = Enum.VerticalAlignment.Bottom
     layout.Padding = UDim.new(0, 5)
     layout.Parent = self.NotifContainer
-end
 
-function SolsticeUI:Notify(text, dur)
-    if not self.Config.ShowNotifications then return end
-    dur = dur or 2.2
-    local tw = math.min(GetTextWidth(text, self.Config.Font, 12) + 28, 280)
-
-    local holder = Instance.new("Frame")
-    holder.Size = UDim2.new(0, tw, 0, 28)
-    holder.BackgroundTransparency = 1
-    holder.Parent = self.NotifContainer
-
-    local card = Instance.new("Frame")
-    card.Size = UDim2.new(1, 0, 1, 0)
-    card.Position = UDim2.new(0, tw + 40, 0, 0)
-    card.BackgroundColor3 = PALETTE.PanelBg
-    card.BackgroundTransparency = 0.03
-    card.BorderSizePixel = 0
-    card.Parent = holder
-    Corner(card, UDim.new(0, 3))
-
-    local stroke = Instance.new("UIStroke")
-    stroke.Color = PALETTE.NotifBorder
-    stroke.Thickness = 1
-    stroke.Transparency = 0.55
-    stroke.Parent = card
-
-    local gradLine = Instance.new("Frame")
-    gradLine.Size = UDim2.new(1, 0, 0, 2)
-    gradLine.BackgroundColor3 = PALETTE.ActiveGradientStart
-    gradLine.BorderSizePixel = 0
-    gradLine.Parent = card
-
-    local lbl = Instance.new("TextLabel")
-    lbl.Size = UDim2.new(1, -10, 1, -2)
-    lbl.Position = UDim2.new(0, 5, 0, 2)
-    lbl.BackgroundTransparency = 1
-    lbl.Text = text
-    lbl.TextColor3 = PALETTE.ItemText
-    lbl.Font = self.Config.Font
-    lbl.TextSize = 11
-    lbl.TextXAlignment = Enum.TextXAlignment.Center
-    lbl.Parent = card
-    if self.Config.UseCustomFont then FontLoader.setFont(self.Config.CustomFontName, lbl) end
-
-    Tween(card, ANIM.NotifyIn, {
-        Position = UDim2.new(0, 0, 0, 0)
-    }):Play()
-
-    task.delay(dur, function()
-        if card and card.Parent then
-            local fadeOut = Tween(card, ANIM.NotifyOut, {
-                Position = UDim2.new(0, tw + 40, 0, 0),
-                BackgroundTransparency = 1
-            })
-            fadeOut:Play()
-            Tween(stroke, TweenInfo.new(0.3), {Transparency = 1}):Play()
-            Tween(lbl, TweenInfo.new(0.2), {TextTransparency = 1}):Play()
-            fadeOut.Completed:Connect(function()
-                holder:Destroy()
-            end)
+    layout:GetPropertyChangedSignal("AbsoluteContentSize"):Connect(function()
+        for i, v in ipairs(self.NotifContainer:GetChildren()) do
+            if v:IsA("Frame") then
+                v.LayoutOrder = i
+            end
         end
     end)
+end
+
+function SolsticeUI:Notify(topText, bottomText, duration, customIcon)
+    if not self.Config.ShowNotifications then return end
+    duration = duration or 2.2
+
+    local offset = #self.NotifContainer:GetChildren()
+    local frame = Instance.new("Frame")
+    frame.Size = UDim2.new(0, 266, 0, 75)
+    frame.Position = UDim2.new(1, -262, 1, -(150 + 80 * offset))
+    frame.BackgroundTransparency = 0.5
+    frame.BackgroundColor3 = Color3.new(0, 0, 0)
+    frame.BorderSizePixel = 0
+    frame.Parent = self.NotifContainer
+    frame.LayoutOrder = offset
+    Corner(frame, UDim.new(0, 4))
+
+    local frame2 = Instance.new("Frame")
+    frame2.BackgroundColor3 = PALETTE.ActiveGradientStart
+    frame2.Size = UDim2.new(1, 0, 0, 4)
+    frame2.Position = UDim2.new(0, 0, 1, -4)
+    frame2.BorderSizePixel = 0
+    frame2.Parent = frame
+
+    local frame3 = frame2:Clone()
+    frame3.Size = UDim2.new(1, 0, 0, 2)
+    frame3.Position = UDim2.new(0, 0, 0, 0)
+    frame3.Parent = frame2
+    Corner(frame2, UDim.new(0, 4))
+
+    local icon = Instance.new("ImageLabel")
+    icon.Name = "IconLabel"
+    icon.Image = customIcon or ""
+    icon.BackgroundTransparency = 1
+    icon.Position = UDim2.new(0, -6, 0, -8)
+    icon.Size = UDim2.new(0, 60, 0, 60)
+    icon.Parent = frame
+
+    local textlabel1 = Instance.new("TextLabel")
+    textlabel1.Font = Enum.Font.SourceSansBold
+    textlabel1.TextSize = 18
+    textlabel1.TextColor3 = Color3.new(1, 1, 1)
+    textlabel1.BackgroundTransparency = 1
+    textlabel1.Position = UDim2.new(0, 46, 0, 12)
+    textlabel1.TextXAlignment = Enum.TextXAlignment.Left
+    textlabel1.TextYAlignment = Enum.TextYAlignment.Top
+    textlabel1.Text = topText
+    textlabel1.Parent = frame
+
+    local textlabel2 = textlabel1:Clone()
+    textlabel2.Position = UDim2.new(0, 46, 0, 40)
+    textlabel2.Font = Enum.Font.SourceSans
+    textlabel2.TextColor3 = Color3.new(0.5, 0.5, 0.5)
+    textlabel2.RichText = true
+    textlabel2.Text = bottomText or ""
+    textlabel2.Parent = frame
+
+    -- Slide in animation
+    frame.Position = UDim2.new(1, 0, 1, frame.Position.Y.Offset)
+    Tween(frame, ANIM.NotifyIn, {Position = UDim2.new(1, -262, 1, frame.Position.Y.Offset)}):Play()
+
+    task.spawn(function()
+        pcall(function()
+            Tween(frame2, TweenInfo.new(duration, Enum.EasingStyle.Linear), {Size = UDim2.new(0, 0, 0, 4)}):Play()
+            task.wait(duration)
+            Tween(frame, ANIM.NotifyOut, {
+                Position = UDim2.new(1, 0, 1, frame.Position.Y.Offset),
+                BackgroundTransparency = 1
+            }):Play()
+            task.wait(0.3)
+            frame:Destroy()
+        end)
+    end)
+
+    return frame
 end
 
 -- ==================== RENDER LOOP ====================
 function SolsticeUI:_StartRenderLoop()
     RunService.RenderStepped:Connect(function(dt)
+        -- Rainbow value for color sliders
+        self.RainbowValue = (self.RainbowValue + dt * 0.01) % 1
+
+        -- ArrayList rainbow
         if self.ARRAYLIST_ENABLED then
             self.RainbowOffset = (self.RainbowOffset + dt * self.Config.ArrayListRainbowSpeed) % 1
             for name, itemFrame in pairs(self.ArrayListItems) do
@@ -733,18 +967,1431 @@ function SolsticeUI:_StartRenderLoop()
     end)
 end
 
--- ==================== TOGGLE KEY ====================
+-- ==================== INPUT HANDLERS ====================
 function SolsticeUI:_BindToggleKey()
     UserInputService.InputBegan:Connect(function(input, gameProcessed)
         if gameProcessed then return end
-        if input.KeyCode == Enum.KeyCode.RightShift then
+        if input.KeyCode == Enum.KeyCode[self.Config.GUIKeybind] and not self.KeybindCaptured then
             self.GUI_ENABLED = not self.GUI_ENABLED
             self.ClickGui.Enabled = self.GUI_ENABLED
+            if self.Config.ShowBlur then
+                self.MainBlur.Enabled = self.GUI_ENABLED
+            end
+            -- Update custom windows visibility
+            for _, win in pairs(self.CustomWindows) do
+                if win.Api and win.Api.CheckVis then
+                    win.Api.CheckVis()
+                end
+            end
+        end
+
+        if input.KeyCode == Enum.KeyCode.LeftControl then
+            self.HoldingControl = true
+        end
+
+        -- Keybind capture
+        if self.KeybindCaptured and input.KeyCode ~= Enum.KeyCode.LeftShift then
+            local keyName = tostring(input.KeyCode):gsub("Enum.KeyCode.", "")
+            self.PressedKeybindKey = (keyName ~= "Unknown" and keyName or "")
+        end
+
+        -- Module keybinds
+        if not self.KeybindCaptured then
+            for name, mod in pairs(self.AllModules) do
+                if mod.Keybind and mod.Keybind ~= "" and input.KeyCode == Enum.KeyCode[mod.Keybind] then
+                    if mod.Toggle then
+                        mod.Toggle()
+                        self:Notify("Module Toggled", name .. ' <font color="#FFFFFF">has been</font> <font color="' .. 
+                            (mod.Enabled() and '#32CD32' or '#E60000') .. '">' .. (mod.Enabled() and "Enabled" or "Disabled") .. '</font><font color="#FFFFFF">!</font>', 1)
+                    end
+                end
+            end
+            -- Profile keybinds
+            for profname, profile in pairs(self.Profiles) do
+                if profile.Keybind and profile.Keybind ~= "" and input.KeyCode == Enum.KeyCode[profile.Keybind] and profname ~= self.CurrentProfile then
+                    self:SwitchProfile(profname)
+                end
+            end
+        end
+
+        -- Ctrl + arrow keys for slider微调
+        if self.HoldingControl and self.CapturedSlider then
+            if input.KeyCode == Enum.KeyCode.Left or input.KeyCode == Enum.KeyCode.Right then
+                local delta = input.KeyCode == Enum.KeyCode.Left and -1 or 1
+                if self.CapturedSlider.Type == "Slider" then
+                    self.CapturedSlider.Api.SetValue(self.CapturedSlider.Api.Value + delta)
+                elseif self.CapturedSlider.Type == "ColorSlider" then
+                    self.CapturedSlider.Api.SetValue(self.CapturedSlider.Api.Value + (delta * 0.01))
+                elseif self.CapturedSlider.Type == "TwoSlider" then
+                    self.CapturedSlider.Api.SetValue(self.CapturedSlider.Api.Value + delta)
+                end
+            end
+        end
+    end)
+
+    UserInputService.InputEnded:Connect(function(input)
+        if input.KeyCode == Enum.KeyCode.LeftControl then
+            self.HoldingControl = false
         end
     end)
 end
 
--- ==================== CREATE CATEGORY ====================
+function SolsticeUI:_BindInputHandlers()
+    -- Additional input handling if needed
+end
+
+-- ==================== CREATE WINDOW (Vape Style) ====================
+function SolsticeUI:CreateWindow(name, icon, position, visible)
+    local windowapi = {}
+    local currentexpandedbutton = nil
+
+    local windowtitle = Instance.new("TextButton")
+    windowtitle.Text = ""
+    windowtitle.AutoButtonColor = false
+    windowtitle.BackgroundColor3 = PALETTE.WindowBg
+    windowtitle.Size = UDim2.new(0, self.Config.PanelWidth, 0, self.Config.PanelHeaderHeight)
+    windowtitle.Position = position or UDim2.new(0, self.NextPanelX, 0, self.NextPanelY)
+    windowtitle.Name = name .. "Window"
+    windowtitle.Visible = visible ~= false
+    windowtitle.Parent = self.ClickGui
+    Corner(windowtitle)
+
+    local windowicon = Instance.new("ImageLabel")
+    windowicon.Size = UDim2.new(0, 16, 0, 16)
+    windowicon.Image = icon or ""
+    windowicon.ImageColor3 = Color3.fromRGB(200, 200, 200)
+    windowicon.Name = "WindowIcon"
+    windowicon.BackgroundTransparency = 1
+    windowicon.Position = UDim2.new(0, 10, 0, 13)
+    windowicon.Parent = windowtitle
+
+    local windowtext = Instance.new("TextLabel")
+    windowtext.Size = UDim2.new(0, 155, 0, self.Config.PanelHeaderHeight)
+    windowtext.BackgroundTransparency = 1
+    windowtext.Name = "WindowTitle"
+    windowtext.Position = UDim2.new(0, 36, 0, 0)
+    windowtext.TextXAlignment = Enum.TextXAlignment.Left
+    windowtext.Font = self.Config.Font
+    windowtext.TextSize = self.Config.HeaderTextSize
+    windowtext.Text = name
+    windowtext.TextColor3 = PALETTE.HeaderText
+    windowtext.Parent = windowtitle
+    if self.Config.UseCustomFont then FontLoader.setFont(self.Config.CustomFontName, windowtext) end
+
+    local expandbutton = Instance.new("ImageButton")
+    expandbutton.Active = true
+    expandbutton.Size = UDim2.new(0, 9, 0, 4)
+    expandbutton.Image = ""
+    expandbutton.Position = UDim2.new(1, -20, 0, 19)
+    expandbutton.Name = "ExpandButton"
+    expandbutton.BackgroundTransparency = 1
+    expandbutton.Rotation = 180
+    expandbutton.Parent = windowtitle
+    local arrowText = Instance.new("TextLabel")
+    arrowText.Size = UDim2.new(1, 0, 1, 0)
+    arrowText.BackgroundTransparency = 1
+    arrowText.Text = "▲"
+    arrowText.TextColor3 = PALETTE.Muted
+    arrowText.TextSize = 8
+    arrowText.Parent = expandbutton
+
+    local children = Instance.new("Frame")
+    children.BackgroundTransparency = 1
+    children.Size = UDim2.new(1, 0, 1, -4)
+    children.Position = UDim2.new(0, 0, 0, self.Config.PanelHeaderHeight)
+    children.Visible = false
+    children.Parent = windowtitle
+
+    local children2 = Instance.new("Frame")
+    children2.BackgroundTransparency = 1
+    children2.Size = UDim2.new(1, 0, 1, -4)
+    children2.Position = UDim2.new(0, 0, 0, self.Config.PanelHeaderHeight)
+    children2.Visible = false
+    children2.Name = "SettingsChildren"
+    children2.Parent = windowtitle
+
+    local uilistlayout = Instance.new("UIListLayout")
+    uilistlayout.SortOrder = Enum.SortOrder.LayoutOrder
+    uilistlayout.Parent = children
+
+    local uilistlayout2 = Instance.new("UIListLayout")
+    uilistlayout2.SortOrder = Enum.SortOrder.LayoutOrder
+    uilistlayout2.Parent = children2
+
+    uilistlayout:GetPropertyChangedSignal("AbsoluteContentSize"):Connect(function()
+        if children.Visible then
+            windowtitle.Size = UDim2.new(0, self.Config.PanelWidth, 0, self.Config.PanelHeaderHeight + uilistlayout.AbsoluteContentSize.Y * (1 / self.MainRescale.Scale))
+        end
+    end)
+
+    uilistlayout2:GetPropertyChangedSignal("AbsoluteContentSize"):Connect(function()
+        if children2.Visible then
+            windowtitle.Size = UDim2.new(0, self.Config.PanelWidth, 0, self.Config.PanelHeaderHeight + uilistlayout2.AbsoluteContentSize.Y * (1 / self.MainRescale.Scale))
+        end
+    end)
+
+    local noexpand = false
+    MakeDraggable(windowtitle, windowtitle, self.MainRescale.Scale)
+
+    self.Windows[name] = {
+        Object = windowtitle,
+        ChildrenObject = children,
+        Api = windowapi,
+        Type = "Window"
+    }
+
+    windowapi.SetVisible = function(value)
+        windowtitle.Visible = value
+    end
+
+    windowapi.ExpandToggle = function()
+        if noexpand == false then
+            children.Visible = not children.Visible
+            if children.Visible then
+                expandbutton.Rotation = 0
+                windowtitle.Size = UDim2.new(0, self.Config.PanelWidth, 0, self.Config.PanelHeaderHeight + uilistlayout.AbsoluteContentSize.Y * (1 / self.MainRescale.Scale))
+            else
+                expandbutton.Rotation = 180
+                windowtitle.Size = UDim2.new(0, self.Config.PanelWidth, 0, self.Config.PanelHeaderHeight)
+            end
+        end
+    end
+
+    windowtitle.MouseButton2Click:Connect(windowapi.ExpandToggle)
+    expandbutton.MouseButton1Click:Connect(windowapi.ExpandToggle)
+    expandbutton.MouseButton2Click:Connect(windowapi.ExpandToggle)
+
+    -- ==================== CREATE OPTIONS BUTTON ====================
+    windowapi.CreateOptionsButton = function(naame, temporaryfunction, temporaryfunction2, expandedmenu, temporaryfunction3, hovertext)
+        local buttonapi = {}
+        local amount = #children:GetChildren()
+
+        local button = Instance.new("TextButton")
+        button.Name = naame .. "Button"
+        button.AutoButtonColor = false
+        button.Size = UDim2.new(1, 0, 0, self.Config.ItemHeight)
+        button.BorderSizePixel = 0
+        button.BackgroundColor3 = PALETTE.WindowChildren
+        button.Text = ""
+        button.LayoutOrder = amount
+        button.Parent = children
+
+        local buttonactiveborder = Instance.new("Frame")
+        buttonactiveborder.BackgroundTransparency = 0.75
+        buttonactiveborder.BackgroundColor3 = Color3.new(0, 0, 0)
+        buttonactiveborder.BorderSizePixel = 0
+        buttonactiveborder.Size = UDim2.new(1, 0, 0, 1)
+        buttonactiveborder.Position = UDim2.new(0, 0, 1, -1)
+        buttonactiveborder.Visible = false
+        buttonactiveborder.Parent = button
+
+        local button2 = Instance.new("ImageButton")
+        button2.BackgroundTransparency = 1
+        button2.Size = UDim2.new(0, 3, 0, 16)
+        button2.Position = UDim2.new(1, -21, 0, 12)
+        button2.Name = "OptionsButton"
+        button2.Image = ""
+        button2.Parent = button
+        local arrowBtn = Instance.new("TextLabel")
+        arrowBtn.Size = UDim2.new(1, 0, 1, 0)
+        arrowBtn.BackgroundTransparency = 1
+        arrowBtn.Text = "›"
+        arrowBtn.TextColor3 = PALETTE.Muted
+        arrowBtn.TextSize = 18
+        arrowBtn.Parent = button2
+
+        local buttontext = Instance.new("TextLabel")
+        buttontext.BackgroundTransparency = 1
+        buttontext.Name = "ButtonText"
+        buttontext.Text = naame
+        buttontext.Size = UDim2.new(0, 120, 0, self.Config.ItemHeight - 2)
+        buttontext.Active = false
+        buttontext.TextColor3 = Color3.fromRGB(162, 162, 162)
+        buttontext.TextSize = self.Config.TextSize
+        buttontext.Font = self.Config.Font
+        buttontext.TextXAlignment = Enum.TextXAlignment.Left
+        buttontext.Position = UDim2.new(0, 10, 0, 0)
+        buttontext.Parent = button
+        if self.Config.UseCustomFont then FontLoader.setFont(self.Config.CustomFontName, buttontext) end
+
+        local children2_local = Instance.new("Frame")
+        children2_local.Size = UDim2.new(1, 0, 0, 0)
+        children2_local.BackgroundTransparency = 1
+        children2_local.LayoutOrder = amount
+        children2_local.Visible = false
+        children2_local.Name = naame .. "Children"
+        children2_local.Parent = children
+
+        local uilistlayout_local = Instance.new("UIListLayout")
+        uilistlayout_local.SortOrder = Enum.SortOrder.LayoutOrder
+        uilistlayout_local.Parent = children2_local
+        uilistlayout_local:GetPropertyChangedSignal("AbsoluteContentSize"):Connect(function()
+            children2_local.Size = UDim2.new(0, self.Config.PanelWidth, 0, uilistlayout_local.AbsoluteContentSize.Y * (1 / self.MainRescale.Scale))
+        end)
+
+        -- Keybind
+        local bindbkg = Instance.new("TextButton")
+        bindbkg.Text = ""
+        bindbkg.AutoButtonColor = false
+        bindbkg.Size = UDim2.new(0, 20, 0, 21)
+        bindbkg.Position = UDim2.new(1, -56, 0, 9)
+        bindbkg.BorderSizePixel = 0
+        bindbkg.BackgroundColor3 = Color3.fromRGB(0, 0, 0)
+        bindbkg.BackgroundTransparency = 0.8
+        bindbkg.Visible = false
+        bindbkg.Parent = button
+        Corner(bindbkg, UDim.new(0, 4))
+
+        local bindimg = Instance.new("ImageLabel")
+        bindimg.Image = ""
+        bindimg.BackgroundTransparency = 1
+        bindimg.ImageTransparency = 0.2
+        bindimg.Size = UDim2.new(0, 12, 0, 12)
+        bindimg.Position = UDim2.new(0, 4, 0, 5)
+        bindimg.Active = false
+        bindimg.Parent = bindbkg
+        local keyIcon = Instance.new("TextLabel")
+        keyIcon.Size = UDim2.new(1, 0, 1, 0)
+        keyIcon.BackgroundTransparency = 1
+        keyIcon.Text = "⌨"
+        keyIcon.TextColor3 = PALETTE.Muted
+        keyIcon.TextSize = 10
+        keyIcon.Parent = bindimg
+
+        local bindtext = Instance.new("TextLabel")
+        bindtext.Active = false
+        bindtext.BackgroundTransparency = 1
+        bindtext.Text = ""
+        bindtext.TextSize = 16
+        bindtext.Parent = bindbkg
+        bindtext.Font = self.Config.Font
+        bindtext.Size = UDim2.new(1, 0, 1, 0)
+        bindtext.TextColor3 = Color3.fromRGB(201, 201, 201)
+        bindtext.Visible = false
+
+        local bindtext2 = Instance.new("TextLabel")
+        bindtext2.Text = "PRESS A KEY TO BIND"
+        bindtext2.Size = UDim2.new(0, 150, 0, 40)
+        bindtext2.Font = self.Config.Font
+        bindtext2.TextSize = 17
+        bindtext2.TextColor3 = Color3.fromRGB(201, 201, 201)
+        bindtext2.BackgroundColor3 = Color3.fromRGB(37, 37, 37)
+        bindtext2.BorderSizePixel = 0
+        bindtext2.Visible = false
+        bindtext2.Parent = button
+
+        -- Tooltip
+        if hovertext and type(hovertext) == "string" then
+            button.MouseEnter:Connect(function() 
+                local pos = UserInputService:GetMouseLocation()
+                self:ShowTooltip(hovertext, pos.X, pos.Y)
+            end)
+            button.MouseMoved:Connect(function(x, y)
+                self:ShowTooltip(hovertext, x, y)
+            end)
+            button.MouseLeave:Connect(function()
+                self:HideTooltip()
+            end)
+        end
+
+        buttonapi.Enabled = false
+        buttonapi.Keybind = ""
+        buttonapi.Name = naame
+        buttonapi.HasExtraText = type(temporaryfunction3) == "function"
+        buttonapi.GetExtraText = buttonapi.HasExtraText and temporaryfunction3 or function() return "" end
+        local newsize = UDim2.new(0, 20, 0, 21)
+
+        buttonapi.SetKeybind = function(key)
+            if key == "" then
+                buttonapi.Keybind = key
+                newsize = UDim2.new(0, 20, 0, 21)
+                bindbkg.Size = newsize
+                bindbkg.Visible = true
+                bindbkg.Position = UDim2.new(1, -(36 + newsize.X.Offset), 0, 9)
+                bindimg.Visible = true
+                bindtext.Visible = false
+                bindtext.Text = key
+            else
+                local textsize = TextService:GetTextSize(key, 16, bindtext.Font, Vector2.new(99999, 99999))
+                newsize = UDim2.new(0, 13 + textsize.X, 0, 21)
+                buttonapi.Keybind = key
+                bindbkg.Visible = true
+                bindbkg.Size = newsize
+                bindbkg.Position = UDim2.new(1, -(36 + newsize.X.Offset), 0, 9)
+                bindimg.Visible = false
+                bindtext.Visible = true
+                bindtext.Text = key
+            end
+        end
+
+        buttonapi.ToggleButton = function(clicked)
+            buttonapi.Enabled = not buttonapi.Enabled
+            if buttonapi.Enabled then
+                button.BackgroundColor3 = PALETTE.ActiveBg
+                buttonactiveborder.Visible = true
+                buttontext.TextColor3 = PALETTE.ActiveText
+                temporaryfunction()
+            else
+                button.BackgroundColor3 = PALETTE.WindowChildren
+                buttonactiveborder.Visible = false
+                buttontext.TextColor3 = Color3.fromRGB(162, 162, 162)
+                temporaryfunction2()
+            end
+            self:_SetModuleState(naame, buttonapi.Enabled)
+        end
+
+        buttonapi.ExpandToggle = function()
+            if children2_local.Visible then
+                for _, v in pairs(children:GetChildren()) do
+                    if v:IsA("TextButton") then
+                        v.Visible = true
+                    end
+                end
+                children2_local.Visible = false
+                noexpand = false
+                windowtitle.Size = UDim2.new(0, self.Config.PanelWidth, 0, self.Config.PanelHeaderHeight + uilistlayout.AbsoluteContentSize.Y)
+            else
+                for _, v in pairs(children:GetChildren()) do
+                    if v:IsA("TextButton") then
+                        v.Visible = false
+                    end
+                end
+                button.Visible = true
+                children2_local.Visible = true
+                noexpand = true
+                windowtitle.Size = UDim2.new(0, self.Config.PanelWidth, 0, self.Config.PanelHeaderHeight + 45 + uilistlayout_local.AbsoluteContentSize.Y * (1 / self.MainRescale.Scale))
+                currentexpandedbutton = buttonapi
+            end
+        end
+
+        -- Create settings methods
+        buttonapi.CreateToggle = function(togglename, tempfunc, tempfunc2, default)
+            return self:_CreateWindowToggle(children2_local, togglename, tempfunc, tempfunc2, default)
+        end
+
+        buttonapi.CreateSlider = function(slidername, min, max, tempfunc, defaultvalue, percent)
+            return self:_CreateWindowSlider(children2_local, slidername, min, max, tempfunc, defaultvalue, percent)
+        end
+
+        buttonapi.CreateTwoSlider = function(slidername, min, max, tempfunc, decimal, defaultvalue, defaultvalue2)
+            return self:_CreateWindowTwoSlider(children2_local, slidername, min, max, tempfunc, decimal, defaultvalue, defaultvalue2)
+        end
+
+        buttonapi.CreateColorSlider = function(slidername, tempfunc)
+            return self:_CreateWindowColorSlider(children2_local, slidername, tempfunc)
+        end
+
+        buttonapi.CreateDropdown = function(dropname, options, tempfunc)
+            return self:_CreateWindowDropdown(children2_local, dropname, options, tempfunc)
+        end
+
+        buttonapi.CreateTextList = function(listname, placeholder, tempfunc, tempfunc2)
+            return self:_CreateWindowTextList(children2_local, listname, placeholder, tempfunc, tempfunc2)
+        end
+
+        button.MouseButton1Click:Connect(function() buttonapi.ToggleButton(true) end)
+        button.MouseEnter:Connect(function() 
+            bindbkg.Visible = true
+            if not buttonapi.Enabled then
+                Tween(button, ANIM.Hover, {BackgroundColor3 = Color3.fromRGB(31, 30, 31)}):Play()
+            end
+        end)
+        button.MouseLeave:Connect(function() 
+            self:HideTooltip()
+            if buttonapi.Keybind == "" then
+                bindbkg.Visible = false 
+            end
+            if not buttonapi.Enabled then
+                Tween(button, ANIM.Hover, {BackgroundColor3 = PALETTE.WindowChildren}):Play()
+            end
+        end)
+
+        bindbkg.MouseButton1Click:Connect(function()
+            if not self.KeybindCaptured then
+                self.KeybindCaptured = true
+                task.spawn(function()
+                    bindtext2.Visible = true
+                    repeat task.wait() until self.PressedKeybindKey ~= ""
+                    local newKey = self.PressedKeybindKey
+                    buttonapi.SetKeybind((newKey == buttonapi.Keybind and "" or newKey))
+                    self.PressedKeybindKey = ""
+                    self.KeybindCaptured = false
+                    bindtext2.Visible = false
+                end)
+            end
+        end)
+
+        button.MouseButton2Click:Connect(buttonapi.ExpandToggle)
+        button2.MouseButton1Click:Connect(buttonapi.ExpandToggle)
+
+        self.AllModules[naame] = {
+            Button = button,
+            Enabled = function() return buttonapi.Enabled end,
+            Toggle = function() buttonapi.ToggleButton(true) end,
+            Keybind = buttonapi.Keybind,
+            SetKeybind = buttonapi.SetKeybind,
+            Api = buttonapi,
+        }
+
+        return buttonapi
+    end
+
+    -- ==================== CREATE DIVIDER ====================
+    windowapi.CreateDivider = function(text)
+        local amount = #children:GetChildren()
+        if text then
+            local dividerlabel = Instance.new("TextLabel")
+            dividerlabel.Size = UDim2.new(1, 0, 0, 30)
+            dividerlabel.BackgroundColor3 = PALETTE.WindowHeader
+            dividerlabel.BorderSizePixel = 0
+            dividerlabel.TextColor3 = Color3.fromRGB(85, 84, 85)
+            dividerlabel.TextSize = 14
+            dividerlabel.Font = self.Config.Font
+            dividerlabel.Text = "    " .. text
+            dividerlabel.TextXAlignment = Enum.TextXAlignment.Left
+            dividerlabel.LayoutOrder = amount
+            dividerlabel.Parent = children
+        end
+        local divider = Instance.new("Frame")
+        divider.Size = UDim2.new(1, 0, 0, 1)
+        divider.Name = "Divider"
+        divider.LayoutOrder = amount + (text and 1 or 0)
+        divider.BackgroundColor3 = PALETTE.Divider
+        divider.BorderSizePixel = 0
+        divider.Parent = children
+    end
+
+    self.NextPanelX = self.NextPanelX + self.Config.PanelSpacing
+
+    return windowapi
+end
+
+-- ==================== CREATE CUSTOM WINDOW (HUD Style - Pinnable) ====================
+function SolsticeUI:CreateCustomWindow(name, icon, position, visible)
+    local windowapi = {}
+
+    local windowtitle = Instance.new("TextButton")
+    windowtitle.Text = ""
+    windowtitle.AutoButtonColor = false
+    windowtitle.BackgroundColor3 = PALETTE.WindowBg
+    windowtitle.Size = UDim2.new(0, self.Config.PanelWidth, 0, self.Config.PanelHeaderHeight)
+    windowtitle.Position = position or UDim2.new(0, 20, 0, 20)
+    windowtitle.Name = name .. "CustomWindow"
+    windowtitle.Visible = visible ~= false
+    windowtitle.Parent = self.HudGui
+    Corner(windowtitle)
+
+    local windowicon = Instance.new("ImageLabel")
+    windowicon.Size = UDim2.new(0, 16, 0, 16)
+    windowicon.Image = icon or ""
+    windowicon.ImageColor3 = Color3.fromRGB(200, 200, 200)
+    windowicon.Name = "WindowIcon"
+    windowicon.BackgroundTransparency = 1
+    windowicon.Position = UDim2.new(0, 10, 0, 13)
+    windowicon.Parent = windowtitle
+
+    local windowtext = Instance.new("TextLabel")
+    windowtext.Size = UDim2.new(0, 155, 0, self.Config.PanelHeaderHeight)
+    windowtext.BackgroundTransparency = 1
+    windowtext.Name = "WindowTitle"
+    windowtext.Position = UDim2.new(0, 36, 0, 0)
+    windowtext.TextXAlignment = Enum.TextXAlignment.Left
+    windowtext.Font = self.Config.Font
+    windowtext.TextSize = self.Config.HeaderTextSize
+    windowtext.Text = name
+    windowtext.TextColor3 = PALETTE.HeaderText
+    windowtext.Parent = windowtitle
+    if self.Config.UseCustomFont then FontLoader.setFont(self.Config.CustomFontName, windowtext) end
+
+    local expandbutton = Instance.new("ImageButton")
+    expandbutton.AutoButtonColor = false
+    expandbutton.Size = UDim2.new(0, 16, 0, 16)
+    expandbutton.Position = UDim2.new(1, -47, 0, 13)
+    expandbutton.BackgroundTransparency = 1
+    expandbutton.Name = "PinButton"
+    expandbutton.Parent = windowtitle
+    local pinText = Instance.new("TextLabel")
+    pinText.Size = UDim2.new(1, 0, 1, 0)
+    pinText.BackgroundTransparency = 1
+    pinText.Text = "📌"
+    pinText.TextSize = 12
+    pinText.Parent = expandbutton
+
+    local optionsbutton = Instance.new("ImageButton")
+    optionsbutton.AutoButtonColor = false
+    optionsbutton.Size = UDim2.new(0, 10, 0, 20)
+    optionsbutton.Position = UDim2.new(1, -16, 0, 11)
+    optionsbutton.Name = "OptionsButton"
+    optionsbutton.BackgroundTransparency = 1
+    optionsbutton.Parent = windowtitle
+    local moreText = Instance.new("TextLabel")
+    moreText.Size = UDim2.new(1, 0, 1, 0)
+    moreText.BackgroundTransparency = 1
+    moreText.Text = "⋮"
+    moreText.TextColor3 = PALETTE.Muted
+    moreText.TextSize = 14
+    moreText.Parent = optionsbutton
+
+    local children = Instance.new("Frame")
+    children.BackgroundTransparency = 1
+    children.Size = UDim2.new(0, self.Config.PanelWidth, 0, 300)
+    children.Position = UDim2.new(0, 0, 1, 0)
+    children.Visible = true
+    children.Parent = windowtitle
+
+    local children2 = Instance.new("Frame")
+    children2.BackgroundTransparency = 1
+    children2.Size = UDim2.new(1, 0, 1, -4)
+    children2.Position = UDim2.new(0, 0, 0, self.Config.PanelHeaderHeight)
+    children2.Visible = false
+    children2.Parent = windowtitle
+
+    local uilistlayout = Instance.new("UIListLayout")
+    uilistlayout.SortOrder = Enum.SortOrder.LayoutOrder
+    uilistlayout.Parent = children2
+    uilistlayout:GetPropertyChangedSignal("AbsoluteContentSize"):Connect(function()
+        if children2.Visible then
+            windowtitle.Size = UDim2.new(0, self.Config.PanelWidth, 0, self.Config.PanelHeaderHeight + uilistlayout.AbsoluteContentSize.Y)
+        end
+    end)
+
+    MakeDraggable(windowtitle, windowtitle, self.MainRescale.Scale)
+
+    windowapi.Pinned = false
+    windowapi.RealVis = visible ~= false
+
+    windowapi.CheckVis = function()
+        if windowapi.RealVis then
+            if self.ClickGui.Enabled then
+                windowtitle.Visible = true
+                windowtext.Visible = true
+                windowtitle.Size = UDim2.new(0, self.Config.PanelWidth, 0, self.Config.PanelHeaderHeight)
+                windowtitle.BackgroundTransparency = 0
+                windowicon.Visible = true
+                expandbutton.Visible = true
+                optionsbutton.Visible = true
+            else
+                if windowapi.Pinned then
+                    windowtitle.Visible = true
+                    windowtext.Visible = false
+                    windowtitle.Size = UDim2.new(0, self.Config.PanelWidth, 0, 0)
+                    windowtitle.BackgroundTransparency = 1
+                    windowicon.Visible = false
+                    expandbutton.Visible = false
+                    optionsbutton.Visible = false
+                    children2.Visible = false
+                    children.Visible = true
+                else
+                    windowtitle.Visible = false
+                end
+            end
+        else
+            windowtitle.Visible = false
+        end
+    end
+
+    windowapi.SetVisible = function(value)
+        windowapi.RealVis = value
+        windowapi.CheckVis()
+    end
+
+    windowapi.ExpandToggle = function()
+        if children2.Visible then
+            children2.Visible = false
+            children.Visible = true
+            windowtitle.Size = UDim2.new(0, self.Config.PanelWidth, 0, self.Config.PanelHeaderHeight)
+        else
+            children2.Visible = true
+            children.Visible = false
+            windowtitle.Size = UDim2.new(0, self.Config.PanelWidth, 0, self.Config.PanelHeaderHeight + uilistlayout.AbsoluteContentSize.Y)
+        end
+    end
+
+    windowapi.PinnedToggle = function()
+        windowapi.Pinned = not windowapi.Pinned
+        if windowapi.Pinned then
+            pinText.TextTransparency = 0
+        else
+            pinText.TextTransparency = 0.5
+        end
+        windowapi.CheckVis()
+    end
+
+    self.ClickGui:GetPropertyChangedSignal("Enabled"):Connect(windowapi.CheckVis)
+    windowapi.CheckVis()
+
+    expandbutton.MouseButton1Click:Connect(windowapi.PinnedToggle)
+    windowtitle.MouseButton2Click:Connect(windowapi.ExpandToggle)
+    optionsbutton.MouseButton1Click:Connect(windowapi.ExpandToggle)
+
+    self.CustomWindows[name] = {
+        Object = windowtitle,
+        ChildrenObject = children,
+        Api = windowapi,
+        Type = "CustomWindow"
+    }
+
+    -- Settings creation methods
+    windowapi.CreateToggle = function(togglename, tempfunc, tempfunc2, default)
+        return self:_CreateWindowToggle(children2, togglename, tempfunc, tempfunc2, default)
+    end
+
+    windowapi.CreateSlider = function(slidername, min, max, tempfunc, defaultvalue, percent)
+        return self:_CreateWindowSlider(children2, slidername, min, max, tempfunc, defaultvalue, percent)
+    end
+
+    windowapi.CreateColorSlider = function(slidername, tempfunc)
+        return self:_CreateWindowColorSlider(children2, slidername, tempfunc)
+    end
+
+    windowapi.GetCustomChildren = function()
+        return children
+    end
+
+    return windowapi
+end
+
+-- ==================== WINDOW SETTING CREATORS ====================
+function SolsticeUI:_CreateWindowToggle(parent, name, tempfunc, tempfunc2, default)
+    local buttonapi = {}
+    local amount = #parent:GetChildren()
+
+    local buttontext = Instance.new("TextLabel")
+    buttontext.BackgroundTransparency = 1
+    buttontext.Name = "ButtonText"
+    buttontext.Text = "   " .. name
+    buttontext.Name = name
+    buttontext.LayoutOrder = amount
+    buttontext.Size = UDim2.new(1, 0, 0, 30)
+    buttontext.Active = false
+    buttontext.TextColor3 = Color3.fromRGB(162, 162, 162)
+    buttontext.TextSize = self.Config.SettingTextSize
+    buttontext.Font = self.Config.Font
+    buttontext.TextXAlignment = Enum.TextXAlignment.Left
+    buttontext.Position = UDim2.new(0, 10, 0, 0)
+    buttontext.Parent = parent
+    if self.Config.UseCustomFont then FontLoader.setFont(self.Config.CustomFontName, buttontext) end
+
+    local toggleframe1 = Instance.new("TextButton")
+    toggleframe1.AutoButtonColor = false
+    toggleframe1.Size = UDim2.new(0, 22, 0, 12)
+    toggleframe1.BackgroundColor3 = Color3.fromRGB(60, 60, 60)
+    toggleframe1.BorderSizePixel = 0
+    toggleframe1.Text = ""
+    toggleframe1.Name = "ToggleFrame1"
+    toggleframe1.Position = UDim2.new(1, -32, 0, 10)
+    toggleframe1.Parent = buttontext
+    Corner(toggleframe1, UDim.new(0, 16))
+
+    local toggleframe2 = Instance.new("Frame")
+    toggleframe2.Size = UDim2.new(0, 8, 0, 8)
+    toggleframe2.Active = false
+    toggleframe2.Position = UDim2.new(0, 2, 0, 2)
+    toggleframe2.BackgroundColor3 = Color3.fromRGB(26, 25, 26)
+    toggleframe2.BorderSizePixel = 0
+    toggleframe2.Parent = toggleframe1
+    Corner(toggleframe2, UDim.new(0, 16))
+
+    buttonapi.Enabled = false
+    buttonapi.Keybind = ""
+    buttonapi.Default = default
+
+    buttonapi.ToggleButton = function(toggle, first)
+        buttonapi.Enabled = toggle
+        if buttonapi.Enabled then
+            if not first then
+                Tween(toggleframe1, TweenInfo.new(0.1, Enum.EasingStyle.Quad, Enum.EasingDirection.InOut), {
+                    BackgroundColor3 = PALETTE.ActiveBg
+                }):Play()
+            else
+                toggleframe1.BackgroundColor3 = PALETTE.ActiveBg
+            end
+            Tween(toggleframe2, TweenInfo.new(0.1, Enum.EasingStyle.Quad, Enum.EasingDirection.InOut), {
+                Position = UDim2.new(0, 12, 0, 2)
+            }):Play()
+            if tempfunc then tempfunc() end
+        else
+            if not first then
+                Tween(toggleframe1, TweenInfo.new(0.1, Enum.EasingStyle.Quad, Enum.EasingDirection.InOut), {
+                    BackgroundColor3 = Color3.fromRGB(60, 60, 60)
+                }):Play()
+            else
+                toggleframe1.BackgroundColor3 = Color3.fromRGB(60, 60, 60)
+            end
+            Tween(toggleframe2, TweenInfo.new(0.1, Enum.EasingStyle.Quad, Enum.EasingDirection.InOut), {
+                Position = UDim2.new(0, 2, 0, 2)
+            }):Play()
+            if tempfunc2 then tempfunc2() end
+        end
+    end
+
+    buttonapi.ToggleButton(default, true)
+    toggleframe1.MouseButton1Click:Connect(function() buttonapi.ToggleButton(not buttonapi.Enabled, false) end)
+    toggleframe1.MouseEnter:Connect(function()
+        if buttonapi.Enabled == false then
+            Tween(toggleframe1, TweenInfo.new(0.1, Enum.EasingStyle.Quad, Enum.EasingDirection.InOut), {
+                BackgroundColor3 = Color3.fromRGB(100, 100, 100)
+            }):Play()
+        end
+    end)
+    toggleframe1.MouseLeave:Connect(function()
+        if buttonapi.Enabled == false then
+            Tween(toggleframe1, TweenInfo.new(0.1, Enum.EasingStyle.Quad, Enum.EasingDirection.InOut), {
+                BackgroundColor3 = Color3.fromRGB(60, 60, 60)
+            }):Play()
+        end
+    end)
+
+    return buttonapi
+end
+
+function SolsticeUI:_CreateWindowSlider(parent, name, min, max, tempfunc, defaultvalue, percent)
+    local sliderapi = {}
+    local amount = #parent:GetChildren()
+
+    local frame = Instance.new("Frame")
+    frame.Size = UDim2.new(0, self.Config.PanelWidth, 0, self.Config.SliderHeight)
+    frame.BackgroundTransparency = 1
+    frame.ClipsDescendants = true
+    frame.LayoutOrder = amount
+    frame.Name = name
+    frame.Parent = parent
+
+    local text1 = Instance.new("TextLabel")
+    text1.Font = self.Config.Font
+    text1.TextXAlignment = Enum.TextXAlignment.Left
+    text1.Text = "   " .. name
+    text1.Size = UDim2.new(1, 0, 0, 25)
+    text1.TextColor3 = Color3.fromRGB(162, 162, 162)
+    text1.BackgroundTransparency = 1
+    text1.TextSize = self.Config.SettingTextSize
+    text1.Parent = frame
+
+    local text2 = Instance.new("TextLabel")
+    text2.Font = self.Config.Font
+    text2.TextXAlignment = Enum.TextXAlignment.Right
+    text2.Text = tostring((defaultvalue or min)) .. ".0 " .. (percent and "%" or " ") .. " "
+    text2.Size = UDim2.new(1, 0, 0, 25)
+    text2.TextColor3 = Color3.fromRGB(162, 162, 162)
+    text2.BackgroundTransparency = 1
+    text2.TextSize = self.Config.SettingTextSize
+    text2.Parent = frame
+
+    local slider1 = Instance.new("Frame")
+    slider1.Size = UDim2.new(0, self.Config.PanelWidth - 20, 0, 2)
+    slider1.BorderSizePixel = 0
+    slider1.BackgroundColor3 = Color3.fromRGB(60, 60, 60)
+    slider1.Position = UDim2.new(0, 10, 0, 32)
+    slider1.Name = "Slider"
+    slider1.Parent = frame
+
+    local slider2 = Instance.new("Frame")
+    slider2.Size = UDim2.new(math.clamp(((defaultvalue or min) / max), 0.02, 0.97), 0, 1, 0)
+    slider2.BackgroundColor3 = PALETTE.ActiveBg
+    slider2.Name = "FillSlider"
+    slider2.Parent = slider1
+
+    local slider3 = Instance.new("ImageButton")
+    slider3.AutoButtonColor = false
+    slider3.Size = UDim2.new(0, 24, 0, 16)
+    slider3.BackgroundColor3 = Color3.fromRGB(25, 26, 25)
+    slider3.BorderSizePixel = 0
+    slider3.Position = UDim2.new(1, -11, 0, -7)
+    slider3.Parent = slider2
+    slider3.Name = "ButtonSlider"
+
+    sliderapi.Value = (defaultvalue or min)
+    sliderapi.Max = max
+
+    sliderapi.SetValue = function(val)
+        val = math.clamp(val, min, max)
+        sliderapi.Value = val
+        slider2.Size = UDim2.new(math.clamp((val / max), 0.02, 0.97), 0, 1, 0)
+        text2.Text = sliderapi.Value .. ".0 " .. (percent and "%" or " ") .. " "
+        if tempfunc then tempfunc(val) end
+    end
+
+    local function RelativeXY(GuiObject, location)
+        local x = location.X - GuiObject.AbsolutePosition.X
+        local y = location.Y - GuiObject.AbsolutePosition.Y
+        local xm, ym = GuiObject.AbsoluteSize.X, GuiObject.AbsoluteSize.Y
+        x = math.clamp(x, 0, xm)
+        y = math.clamp(y, 0, ym)
+        return x, y, x/xm, y/ym
+    end
+
+    slider3.MouseButton1Down:Connect(function()
+        local x, y, xscale, yscale = RelativeXY(slider1, UserInputService:GetMouseLocation())
+        sliderapi.SetValue(math.floor(min + ((max - min) * xscale)))
+        slider2.Size = UDim2.new(xscale, 0, 1, 0)
+
+        local move
+        local kill
+        move = UserInputService.InputChanged:Connect(function(input)
+            if input.UserInputType == Enum.UserInputType.MouseMovement then
+                local x, y, xscale, yscale = RelativeXY(slider1, UserInputService:GetMouseLocation())
+                sliderapi.SetValue(math.floor(min + ((max - min) * xscale)))
+                slider2.Size = UDim2.new(xscale, 0, 1, 0)
+            end
+        end)
+        kill = UserInputService.InputEnded:Connect(function(input)
+            if input.UserInputType == Enum.UserInputType.MouseButton1 then
+                self.CapturedSlider = {Type = "Slider", Object = frame, Api = sliderapi}
+                move:Disconnect()
+                kill:Disconnect()
+            end
+        end)
+    end)
+
+    return sliderapi
+end
+
+function SolsticeUI:_CreateWindowTwoSlider(parent, name, min, max, tempfunc, decimal, defaultvalue, defaultvalue2)
+    local sliderapi = {}
+    local amount = #parent:GetChildren()
+
+    local frame = Instance.new("Frame")
+    frame.Size = UDim2.new(0, self.Config.PanelWidth, 0, self.Config.TwoSliderHeight)
+    frame.BackgroundTransparency = 1
+    frame.ClipsDescendants = true
+    frame.LayoutOrder = amount
+    frame.Name = name
+    frame.Parent = parent
+
+    local text1 = Instance.new("TextLabel")
+    text1.Font = self.Config.Font
+    text1.TextXAlignment = Enum.TextXAlignment.Left
+    text1.Text = "   " .. name
+    text1.Size = UDim2.new(1, 0, 0, 25)
+    text1.TextColor3 = Color3.fromRGB(162, 162, 162)
+    text1.BackgroundTransparency = 1
+    text1.TextSize = self.Config.SettingTextSize
+    text1.Parent = frame
+
+    local text2 = Instance.new("TextLabel")
+    text2.Font = self.Config.Font
+    text2.TextXAlignment = Enum.TextXAlignment.Right
+    local text2string = tostring((defaultvalue2 or max) / 10)
+    text2.Text = (decimal and (string.len(text2string) > 1 and text2string or text2string..".0   ") or (defaultvalue2 or max) .. ".0   ")
+    text2.Size = UDim2.new(1, 0, 0, 25)
+    text2.TextColor3 = Color3.fromRGB(162, 162, 162)
+    text2.BackgroundTransparency = 1
+    text2.TextSize = self.Config.SettingTextSize
+    text2.Parent = frame
+
+    local text3 = Instance.new("TextLabel")
+    text3.Font = self.Config.Font
+    text3.TextColor3 = Color3.fromRGB(162, 162, 162)
+    text3.BackgroundTransparency = 1
+    text3.TextXAlignment = Enum.TextXAlignment.Right
+    text3.Size = UDim2.new(1, -77, 0, 25)
+    text3.TextSize = self.Config.SettingTextSize
+    local text3string = tostring((defaultvalue or min) / 10)
+    text3.Text = (decimal and (string.len(text3string) > 1 and text3string or text3string..".0") or (defaultvalue or min) .. ".0")
+    text3.Parent = frame
+
+    local text4 = Instance.new("TextLabel")
+    text4.Size = UDim2.new(0, 12, 0, 6)
+    text4.Text = "↔"
+    text4.BackgroundTransparency = 1
+    text4.Position = UDim2.new(0, 154, 0, 10)
+    text4.TextColor3 = PALETTE.Muted
+    text4.Parent = frame
+
+    local slider1 = Instance.new("Frame")
+    slider1.Size = UDim2.new(0, self.Config.PanelWidth - 20, 0, 2)
+    slider1.BorderSizePixel = 0
+    slider1.BackgroundColor3 = Color3.fromRGB(60, 60, 60)
+    slider1.Position = UDim2.new(0, 10, 0, 32)
+    slider1.Name = "Slider"
+    slider1.Parent = frame
+
+    local slider2 = Instance.new("Frame")
+    slider2.Size = UDim2.new(1, 0, 1, 0)
+    slider2.BackgroundColor3 = PALETTE.ActiveBg
+    slider2.Name = "FillSlider"
+    slider2.Parent = slider1
+
+    local slider3 = Instance.new("ImageButton")
+    slider3.AutoButtonColor = false
+    slider3.Size = UDim2.new(0, 16, 0, 16)
+    slider3.BackgroundColor3 = Color3.fromRGB(25, 26, 25)
+    slider3.BorderSizePixel = 0
+    slider3.Position = UDim2.new(1, -8, 1, -9)
+    slider3.Parent = slider1
+    slider3.Name = "ButtonSlider"
+
+    local slider4 = slider3:Clone()
+    slider4.Rotation = 180
+    slider4.Position = UDim2.new(1, -8, 1, -9)
+    slider4.Name = "ButtonSlider2"
+    slider4.Parent = slider1
+
+    slider3:GetPropertyChangedSignal("Position"):Connect(function()
+        slider2.Size = UDim2.new(0, slider4.AbsolutePosition.X - slider3.AbsolutePosition.X, 1, 0)
+        slider2.Position = UDim2.new(slider3.Position.X.Scale, 0, 0, 0)
+    end)
+    slider4:GetPropertyChangedSignal("Position"):Connect(function()
+        slider2.Size = UDim2.new(0, slider4.AbsolutePosition.X - slider3.AbsolutePosition.X, 1, 0)
+        slider2.Position = UDim2.new(slider3.Position.X.Scale, 0, 0, 0)
+    end)
+
+    slider3.Position = UDim2.new((defaultvalue and (defaultvalue == min and 0 or defaultvalue/max) or 0), -8, 1, -9)
+    slider4.Position = UDim2.new((defaultvalue2 and (defaultvalue2 == max and 1 or defaultvalue2/max) or 1), -8, 1, -9)
+    slider2.Size = UDim2.new(0, slider4.AbsolutePosition.X - slider3.AbsolutePosition.X, 1, 0)
+    slider2.Position = UDim2.new(slider3.Position.X.Scale, 0, 0, 0)
+
+    sliderapi.Value = (defaultvalue or min)
+    sliderapi.Value2 = (defaultvalue2 or max)
+    sliderapi.Max = max
+
+    local function RelativeXY(GuiObject, location)
+        local x = location.X - GuiObject.AbsolutePosition.X
+        local y = location.Y - GuiObject.AbsolutePosition.Y
+        local xm, ym = GuiObject.AbsoluteSize.X, GuiObject.AbsoluteSize.Y
+        x = math.clamp(x, 0, xm)
+        y = math.clamp(y, 0, ym)
+        return x, y, x/xm, y/ym
+    end
+
+    sliderapi.SetValue = function(val)
+        val = math.clamp(val, min, max)
+        sliderapi.Value = val
+        Tween(slider3, TweenInfo.new(0.05, Enum.EasingStyle.Quad, Enum.EasingDirection.InOut), {
+            Position = UDim2.new((val / max), -8, 1, -9)
+        }):Play()
+        local stringthing = tostring(sliderapi.Value / 10)
+        text3.Text = (decimal and (string.len(stringthing) > 1 and stringthing or stringthing..".0") or sliderapi.Value .. ".0")
+        if tempfunc then tempfunc(val) end
+    end
+
+    sliderapi.SetValue2 = function(val)
+        val = math.clamp(val, min, max)
+        sliderapi.Value2 = val
+        Tween(slider4, TweenInfo.new(0.05, Enum.EasingStyle.Quad, Enum.EasingDirection.InOut), {
+            Position = UDim2.new((val / max), -8, 1, -9)
+        }):Play()
+        local stringthing = tostring(sliderapi.Value2 / 10)
+        text2.Text = (decimal and (string.len(stringthing) > 1 and stringthing or stringthing..".0").."   " or sliderapi.Value2 .. ".0   ")
+        if tempfunc then tempfunc(val) end
+    end
+
+    sliderapi.GetRandomValue = function()
+        return Random.new():NextNumber(sliderapi.Value, sliderapi.Value2)
+    end
+
+    slider3.MouseButton1Down:Connect(function()
+        local x, y, xscale, yscale = RelativeXY(slider1, UserInputService:GetMouseLocation())
+        sliderapi.SetValue(math.floor(min + ((max - min) * xscale)))
+
+        local move
+        local kill
+        move = UserInputService.InputChanged:Connect(function(input)
+            if input.UserInputType == Enum.UserInputType.MouseMovement then
+                local x, y, xscale, yscale = RelativeXY(slider1, UserInputService:GetMouseLocation())
+                sliderapi.SetValue(math.floor(min + ((max - min) * xscale)))
+            end
+        end)
+        kill = UserInputService.InputEnded:Connect(function(input)
+            if input.UserInputType == Enum.UserInputType.MouseButton1 then
+                self.CapturedSlider = {Type = "TwoSlider", Object = frame, Api = sliderapi}
+                move:Disconnect()
+                kill:Disconnect()
+            end
+        end)
+    end)
+
+    slider4.MouseButton1Down:Connect(function()
+        local x, y, xscale, yscale = RelativeXY(slider1, UserInputService:GetMouseLocation())
+        sliderapi.SetValue2(math.floor(min + ((max - min) * xscale)))
+
+        local move
+        local kill
+        move = UserInputService.InputChanged:Connect(function(input)
+            if input.UserInputType == Enum.UserInputType.MouseMovement then
+                local x, y, xscale, yscale = RelativeXY(slider1, UserInputService:GetMouseLocation())
+                sliderapi.SetValue2(math.floor(min + ((max - min) * xscale)))
+            end
+        end)
+        kill = UserInputService.InputEnded:Connect(function(input)
+            if input.UserInputType == Enum.UserInputType.MouseButton1 then
+                move:Disconnect()
+                kill:Disconnect()
+            end
+        end)
+    end)
+
+    return sliderapi
+end
+
+function SolsticeUI:_CreateWindowColorSlider(parent, name, tempfunc)
+    local min, max = 0, 1
+    local sliderapi = {}
+    local amount = #parent:GetChildren()
+
+    local frame = Instance.new("Frame")
+    frame.Size = UDim2.new(0, self.Config.PanelWidth, 0, self.Config.SliderHeight)
+    frame.BackgroundTransparency = 1
+    frame.LayoutOrder = amount
+    frame.Name = name
+    frame.Parent = parent
+
+    local text1 = Instance.new("TextLabel")
+    text1.Font = self.Config.Font
+    text1.TextXAlignment = Enum.TextXAlignment.Left
+    text1.Text = "   " .. name
+    text1.Size = UDim2.new(1, 0, 0, 25)
+    text1.TextColor3 = Color3.fromRGB(162, 162, 162)
+    text1.BackgroundTransparency = 1
+    text1.TextSize = self.Config.SettingTextSize
+    text1.Parent = frame
+
+    local text2 = Instance.new("Frame")
+    text2.Size = UDim2.new(0, 12, 0, 12)
+    text2.Position = UDim2.new(1, -22, 0, 9)
+    text2.BackgroundColor3 = Color3.fromHSV(0.44, 1, 1)
+    text2.Parent = frame
+    Corner(text2, UDim.new(0, 4))
+
+    local slider1 = Instance.new("TextButton")
+    slider1.AutoButtonColor = false
+    slider1.Text = ""
+    slider1.Size = UDim2.new(0, self.Config.PanelWidth - 20, 0, 2)
+    slider1.BorderSizePixel = 0
+    slider1.BackgroundColor3 = Color3.new(1, 1, 1)
+    slider1.Position = UDim2.new(0, 10, 0, 32)
+    slider1.Name = "Slider"
+    slider1.Parent = frame
+
+    local uigradient = Instance.new("UIGradient")
+    uigradient.Color = ColorSequence.new({
+        ColorSequenceKeypoint.new(0, Color3.fromHSV(0, 1, 1)),
+        ColorSequenceKeypoint.new(0.1, Color3.fromHSV(0.1, 1, 1)),
+        ColorSequenceKeypoint.new(0.2, Color3.fromHSV(0.2, 1, 1)),
+        ColorSequenceKeypoint.new(0.3, Color3.fromHSV(0.3, 1, 1)),
+        ColorSequenceKeypoint.new(0.4, Color3.fromHSV(0.4, 1, 1)),
+        ColorSequenceKeypoint.new(0.5, Color3.fromHSV(0.5, 1, 1)),
+        ColorSequenceKeypoint.new(0.6, Color3.fromHSV(0.6, 1, 1)),
+        ColorSequenceKeypoint.new(0.7, Color3.fromHSV(0.7, 1, 1)),
+        ColorSequenceKeypoint.new(0.8, Color3.fromHSV(0.8, 1, 1)),
+        ColorSequenceKeypoint.new(0.9, Color3.fromHSV(0.9, 1, 1)),
+        ColorSequenceKeypoint.new(1, Color3.fromHSV(1, 1, 1))
+    })
+    uigradient.Parent = slider1
+
+    local slider3 = Instance.new("ImageButton")
+    slider3.AutoButtonColor = false
+    slider3.Size = UDim2.new(0, 24, 0, 16)
+    slider3.BackgroundColor3 = Color3.fromRGB(25, 26, 25)
+    slider3.BorderSizePixel = 0
+    slider3.Position = UDim2.new(0.44, -11, 0, -7)
+    slider3.Parent = slider1
+    slider3.Name = "ButtonSlider"
+
+    sliderapi.Value = 0.44
+    sliderapi.RainbowValue = false
+
+    sliderapi.SetValue = function(val)
+        val = math.clamp(val, min, max)
+        text2.BackgroundColor3 = Color3.fromHSV(val, 1, 1)
+        sliderapi.Value = val
+        Tween(slider3, TweenInfo.new(0.05), {
+            Position = UDim2.new(math.clamp(val, 0.02, 0.95), -9, 0, -7)
+        }):Play()
+        if tempfunc then tempfunc(val) end
+    end
+
+    sliderapi.SetRainbow = function(val)
+        sliderapi.RainbowValue = val
+        if sliderapi.RainbowValue then
+            task.spawn(function()
+                repeat
+                    task.wait()
+                    if sliderapi.RainbowValue then
+                        sliderapi.SetValue(self.RainbowValue)
+                    end
+                until not sliderapi.RainbowValue
+            end)
+        end
+    end
+
+    local function RelativeXY(GuiObject, location)
+        local x = location.X - GuiObject.AbsolutePosition.X
+        local y = location.Y - GuiObject.AbsolutePosition.Y
+        local xm, ym = GuiObject.AbsoluteSize.X, GuiObject.AbsoluteSize.Y
+        x = math.clamp(x, 0, xm)
+        y = math.clamp(y, 0, ym)
+        return x, y, x/xm, y/ym
+    end
+
+    local click = false
+    slider1.MouseButton1Down:Connect(function()
+        click = true
+        task.delay(0.3, function() click = false end)
+        if click then
+            sliderapi.SetRainbow(not sliderapi.RainbowValue)
+        end
+
+        local x, y, xscale, yscale = RelativeXY(slider1, UserInputService:GetMouseLocation())
+        sliderapi.SetValue(min + ((max - min) * xscale))
+
+        local move
+        local kill
+        move = UserInputService.InputChanged:Connect(function(input)
+            if input.UserInputType == Enum.UserInputType.MouseMovement then
+                local x, y, xscale, yscale = RelativeXY(slider1, UserInputService:GetMouseLocation())
+                sliderapi.SetValue(min + ((max - min) * xscale))
+            end
+        end)
+        kill = UserInputService.InputEnded:Connect(function(input)
+            if input.UserInputType == Enum.UserInputType.MouseButton1 then
+                self.CapturedSlider = {Type = "ColorSlider", Object = frame, Api = sliderapi}
+                move:Disconnect()
+                kill:Disconnect()
+            end
+        end)
+    end)
+
+    return sliderapi
+end
+
+function SolsticeUI:_CreateWindowDropdown(parent, name, options, tempfunc)
+    local dropapi = {}
+    local list = options or {}
+    local amount2 = #parent:GetChildren()
+
+    local frame = Instance.new("Frame")
+    frame.Size = UDim2.new(0, self.Config.PanelWidth, 0, 40)
+    frame.BackgroundTransparency = 1
+    frame.LayoutOrder = amount2
+    frame.Name = name
+    frame.Parent = parent
+
+    local drop1 = Instance.new("TextButton")
+    drop1.AutoButtonColor = false
+    drop1.Size = UDim2.new(0, self.Config.PanelWidth - 20, 0, 30)
+    drop1.Position = UDim2.new(0, 10, 0, 10)
+    drop1.Parent = frame
+    drop1.BorderSizePixel = 0
+    drop1.ZIndex = 2
+    drop1.BackgroundColor3 = Color3.fromRGB(26, 25, 26)
+    drop1.TextSize = self.Config.SettingTextSize
+    drop1.TextXAlignment = Enum.TextXAlignment.Left
+    drop1.TextColor3 = Color3.fromRGB(162, 162, 162)
+    drop1.Text = "  " .. name .. " - " .. (list[1] or "")
+    drop1.TextTruncate = Enum.TextTruncate.AtEnd
+    drop1.Font = self.Config.Font
+    Corner(drop1)
+
+    local thing = Instance.new("Frame")
+    thing.Size = UDim2.new(1, 2, 1, 2)
+    thing.BorderSizePixel = 0
+    thing.Position = UDim2.new(0, -1, 0, -1)
+    thing.ZIndex = 1
+    thing.BackgroundColor3 = Color3.fromRGB(60, 60, 60)
+    thing.Parent = drop1
+    Corner(thing)
+
+    local dropframe = Instance.new("Frame")
+    dropframe.ZIndex = 3
+    dropframe.Parent = drop1
+    dropframe.Position = UDim2.new(0, 0, 1, 0)
+    dropframe.BackgroundTransparency = 1
+    dropframe.BorderSizePixel = 0
+    dropframe.Visible = false
+
+    drop1.MouseButton1Click:Connect(function()
+        dropframe.Visible = not dropframe.Visible
+    end)
+
+    dropapi.Value = (list[1] or "")
+    dropapi.Default = dropapi.Value
+
+    dropapi.UpdateList = function(val)
+        list = val
+        for _, child in pairs(dropframe:GetChildren()) do
+            if child:IsA("TextButton") then child:Destroy() end
+        end
+        local placeholder = 0
+        for numbe, listobj in pairs(val) do
+            if listobj ~= dropapi.Value then
+                local drop2 = Instance.new("TextButton")
+                dropframe.Size = UDim2.new(0, self.Config.PanelWidth - 20, 0, placeholder + 20)
+                drop2.Text = listobj
+                drop2.LayoutOrder = numbe
+                drop2.TextColor3 = Color3.new(1, 1, 1)
+                drop2.AutoButtonColor = false
+                drop2.Size = UDim2.new(0, self.Config.PanelWidth - 20, 0, 20)
+                drop2.Position = UDim2.new(0, 2, 0, placeholder - 1)
+                drop2.BackgroundColor3 = Color3.fromRGB(26, 25, 26)
+                drop2.Font = self.Config.Font
+                drop2.TextSize = 14
+                drop2.ZIndex = 4
+                drop2.BorderSizePixel = 0
+                drop2.Name = listobj
+                drop2.Parent = dropframe
+                drop2.MouseButton1Click:Connect(function()
+                    dropapi.Value = listobj
+                    drop1.Text = "  " .. name .. " - " .. listobj
+                    dropframe.Visible = false
+                    if tempfunc then tempfunc(listobj) end
+                    dropapi.UpdateList(list)
+                end)
+                placeholder = placeholder + 20
+            end
+        end
+    end
+
+    dropapi.SetValue = function(listobj)
+        dropapi.Value = listobj
+        drop1.Text = "  " .. name .. " - " .. listobj
+        dropframe.Visible = false
+        if tempfunc then tempfunc(listobj) end
+        dropapi.UpdateList(list)
+    end
+
+    dropapi.UpdateList(list)
+
+    return dropapi
+end
+
+function SolsticeUI:_CreateWindowTextList(parent, name, placeholder, tempfunc, tempfunc2)
+    local textapi = {}
+    local amount = #parent:GetChildren()
+
+    local frame = Instance.new("Frame")
+    frame.Size = UDim2.new(0, self.Config.PanelWidth, 0, 40)
+    frame.BackgroundTransparency = 1
+    frame.ClipsDescendants = true
+    frame.LayoutOrder = amount
+    frame.Name = name
+    frame.Parent = parent
+
+    local textboxbkg = Instance.new("Frame")
+    textboxbkg.BackgroundTransparency = 0.3
+    textboxbkg.BackgroundColor3 = Color3.fromRGB(30, 30, 30)
+    textboxbkg.Name = "AddBoxBKG"
+    textboxbkg.Size = UDim2.new(0, self.Config.PanelWidth - 20, 0, 31)
+    textboxbkg.Position = UDim2.new(0, 10, 0, 5)
+    textboxbkg.ClipsDescendants = true
+    textboxbkg.Parent = frame
+    Corner(textboxbkg)
+
+    local textbox = Instance.new("TextBox")
+    textbox.Size = UDim2.new(0, self.Config.PanelWidth - 61, 1, 0)
+    textbox.Position = UDim2.new(0, 11, 0, 0)
+    textbox.TextXAlignment = Enum.TextXAlignment.Left
+    textbox.Name = "AddBox"
+    textbox.BackgroundTransparency = 1
+    textbox.TextColor3 = Color3.new(1, 1, 1)
+    textbox.PlaceholderColor3 = Color3.fromRGB(200, 200, 200)
+    textbox.Font = self.Config.Font
+    textbox.Text = ""
+    textbox.PlaceholderText = placeholder or "Add item..."
+    textbox.TextSize = self.Config.SettingTextSize
+    textbox.Parent = textboxbkg
+
+    local addbutton = Instance.new("TextButton")
+    addbutton.BorderSizePixel = 0
+    addbutton.Name = "AddButton"
+    addbutton.BackgroundColor3 = Color3.fromRGB(26, 25, 26)
+    addbutton.Position = UDim2.new(0, self.Config.PanelWidth - 46, 0, 8)
+    addbutton.AutoButtonColor = false
+    addbutton.Size = UDim2.new(0, 16, 0, 16)
+    addbutton.Text = "+"
+    addbutton.TextColor3 = PALETTE.ActiveBg
+    addbutton.TextSize = 14
+    addbutton.Parent = textboxbkg
+
+    local scrollframebkg = Instance.new("Frame")
+    scrollframebkg.ZIndex = 2
+    scrollframebkg.Name = "ScrollingFrameBKG"
+    scrollframebkg.Size = UDim2.new(0, self.Config.PanelWidth, 0, 3)
+    scrollframebkg.BackgroundTransparency = 1
+    scrollframebkg.LayoutOrder = amount
+    scrollframebkg.Parent = parent
+
+    local scrollframe = Instance.new("ScrollingFrame")
+    scrollframe.ZIndex = 2
+    scrollframe.Size = UDim2.new(0, self.Config.PanelWidth - 20, 0, 3)
+    scrollframe.Position = UDim2.new(0, 10, 0, 0)
+    scrollframe.BackgroundTransparency = 1
+    scrollframe.ScrollBarThickness = 0
+    scrollframe.ScrollBarImageColor3 = Color3.new(0, 0, 0)
+    scrollframe.LayoutOrder = amount
+    scrollframe.Parent = scrollframebkg
+
+    local uilistlayout3 = Instance.new("UIListLayout")
+    uilistlayout3.Padding = UDim.new(0, 3)
+    uilistlayout3.Parent = scrollframe
+    uilistlayout3:GetPropertyChangedSignal("AbsoluteContentSize"):Connect(function()
+        scrollframe.CanvasSize = UDim2.new(0, 0, 0, uilistlayout3.AbsoluteContentSize.Y)
+        scrollframe.Size = UDim2.new(0, self.Config.PanelWidth - 20, 0, math.clamp(uilistlayout3.AbsoluteContentSize.Y, 1, 105))
+        scrollframebkg.Size = UDim2.new(0, self.Config.PanelWidth, 0, math.clamp(uilistlayout3.AbsoluteContentSize.Y, 1, 105) + 3)
+    end)
+
+    textapi.Object = frame
+    textapi.ScrollingObject = scrollframebkg
+    textapi.ObjectList = {}
+
+    textapi.RefreshValues = function(tab)
+        textapi.ObjectList = tab
+        for _, child in pairs(scrollframe:GetChildren()) do
+            if child:IsA("TextButton") then child:Destroy() end
+        end
+        for i, v in pairs(textapi.ObjectList) do
+            local itemframe = Instance.new("TextButton")
+            itemframe.Size = UDim2.new(0, self.Config.PanelWidth - 20, 0, 33)
+            itemframe.BackgroundColor3 = Color3.fromRGB(31, 30, 31)
+            itemframe.BorderSizePixel = 0
+            itemframe.Text = ""
+            itemframe.AutoButtonColor = false
+            itemframe.Parent = scrollframe
+            Corner(itemframe)
+
+            local itemtext = Instance.new("TextLabel")
+            itemtext.BackgroundTransparency = 1
+            itemtext.Size = UDim2.new(0, self.Config.PanelWidth - 27, 0, 33)
+            itemtext.Name = "ItemText"
+            itemtext.Position = UDim2.new(0, 8, 0, 0)
+            itemtext.Font = self.Config.Font
+            itemtext.TextSize = self.Config.SettingTextSize
+            itemtext.Text = v
+            itemtext.TextXAlignment = Enum.TextXAlignment.Left
+            itemtext.TextColor3 = Color3.fromRGB(163, 163, 163)
+            itemtext.Parent = itemframe
+
+            local deletebutton = Instance.new("TextButton")
+            deletebutton.Size = UDim2.new(0, 16, 0, 16)
+            deletebutton.BackgroundTransparency = 1
+            deletebutton.AutoButtonColor = false
+            deletebutton.ZIndex = 2
+            deletebutton.Text = "×"
+            deletebutton.TextColor3 = Color3.fromRGB(255, 100, 100)
+            deletebutton.TextSize = 14
+            deletebutton.Position = UDim2.new(1, -20, 0, 8)
+            deletebutton.Parent = itemframe
+            deletebutton.MouseButton1Click:Connect(function()
+                table.remove(textapi.ObjectList, i)
+                textapi.RefreshValues(textapi.ObjectList)
+                if tempfunc2 then tempfunc2(i) end
+            end)
+        end
+    end
+
+    addbutton.MouseButton1Click:Connect(function() 
+        if textbox.Text ~= "" then
+            table.insert(textapi.ObjectList, textbox.Text)
+            textapi.RefreshValues(textapi.ObjectList)
+            if tempfunc then tempfunc(textbox.Text) end
+            textbox.Text = ""
+        end
+    end)
+
+    return textapi
+end
+
+-- ==================== ORIGINAL CATEGORY SYSTEM (Preserved) ====================
 function SolsticeUI:CreateCategory(name, iconChar, position, features)
     position = position or UDim2.new(0, self.NextPanelX, 0, self.NextPanelY)
     self.NextPanelX = self.NextPanelX + self.Config.PanelSpacing
@@ -854,7 +2501,7 @@ function SolsticeUI:CreateCategory(name, iconChar, position, features)
     return panelData
 end
 
--- ==================== CREATE FEATURE ====================
+-- ==================== CREATE FEATURE (Original Preserved) ====================
 function SolsticeUI:_CreateFeature(content, panelData, feat)
     local ui = self
     local modContainer = Instance.new("Frame")
@@ -1123,7 +2770,7 @@ function SolsticeUI:_CreateFeature(content, panelData, feat)
     end
 end
 
--- ==================== CREATE SETTINGS ====================
+-- ==================== CREATE SETTINGS (Original Preserved) ====================
 function SolsticeUI:_CreateSettings(modContainer, panelData, settings, moduleName)
     local ui = self
     local setHeight = 0
@@ -1145,6 +2792,8 @@ function SolsticeUI:_CreateSettings(modContainer, panelData, settings, moduleNam
         if s.type == "slider" then height = ui.Config.SliderHeight
         elseif s.type == "color" then height = 24
         elseif s.type == "dropdown" then height = 24
+        elseif s.type == "twoslider" then height = ui.Config.TwoSliderHeight
+        elseif s.type == "textlist" then height = 40
         end
 
         setHeight = setHeight + height + 1
@@ -1168,6 +2817,10 @@ function SolsticeUI:_CreateSettings(modContainer, panelData, settings, moduleNam
             ui:_CreateColorSetting(frame, s)
         elseif s.type == "dropdown" then
             ui:_CreateDropdownSetting(frame, s)
+        elseif s.type == "twoslider" then
+            ui:_CreateTwoSliderSetting(frame, s, moduleName)
+        elseif s.type == "textlist" then
+            ui:_CreateTextListSetting(frame, s, moduleName)
         end
     end
 
@@ -1175,500 +2828,3 @@ function SolsticeUI:_CreateSettings(modContainer, panelData, settings, moduleNam
     container.Size = UDim2.new(1, 0, 0, setHeight)
     return container, setHeight
 end
-
--- ==================== TOGGLE SETTING ====================
-function SolsticeUI:_CreateToggleSetting(frame, s, moduleName)
-    local ui = self
-    local btn = Instance.new("TextButton")
-    btn.Size = UDim2.new(1, 0, 1, 0)
-    btn.BackgroundTransparency = 1
-    btn.Text = ""
-    btn.Parent = frame
-
-    local nameLbl = Instance.new("TextLabel")
-    nameLbl.Size = UDim2.new(1, -50, 1, 0)
-    nameLbl.Position = UDim2.new(0, 8, 0, 0)
-    nameLbl.BackgroundTransparency = 1
-    nameLbl.Text = s.name
-    nameLbl.TextColor3 = s.default and PALETTE.SettingValue or PALETTE.SettingText
-    nameLbl.Font = ui.Config.Font
-    nameLbl.TextSize = 11
-    nameLbl.TextXAlignment = Enum.TextXAlignment.Left
-    nameLbl.Parent = frame
-    if ui.Config.UseCustomFont then FontLoader.setFont(ui.Config.CustomFontName, nameLbl) end
-
-    local switchBg = Instance.new("Frame")
-    switchBg.Size = UDim2.new(0, 28, 0, 14)
-    switchBg.Position = UDim2.new(1, -36, 0.5, -7)
-    switchBg.BackgroundColor3 = s.default and PALETTE.ToggleOn or PALETTE.ToggleOff
-    switchBg.BorderSizePixel = 0
-    switchBg.Parent = frame
-    Corner(switchBg, UDim.new(0.5, 0))
-
-    local switchKnob = Instance.new("Frame")
-    switchKnob.Size = UDim2.new(0, 12, 0, 12)
-    switchKnob.Position = s.default and UDim2.new(1, -13, 0.5, -6) or UDim2.new(0, 1, 0.5, -6)
-    switchKnob.BackgroundColor3 = PALETTE.ToggleKnob
-    switchKnob.BorderSizePixel = 0
-    switchKnob.Parent = switchBg
-    Corner(switchKnob, UDim.new(0.5, 0))
-
-    local knobShadow = Instance.new("Frame")
-    knobShadow.Size = UDim2.new(1, 4, 1, 4)
-    knobShadow.Position = UDim2.new(0, -2, 0, -2)
-    knobShadow.BackgroundColor3 = Color3.fromRGB(0, 0, 0)
-    knobShadow.BackgroundTransparency = 0.7
-    knobShadow.BorderSizePixel = 0
-    knobShadow.ZIndex = -1
-    knobShadow.Parent = switchKnob
-    Corner(knobShadow, UDim.new(0.5, 0))
-
-    local val = s.default
-    btn.MouseButton1Click:Connect(function()
-        val = not val
-        nameLbl.TextColor3 = val and PALETTE.SettingValue or PALETTE.SettingText
-
-        Tween(switchBg, TweenInfo.new(0.2, Enum.EasingStyle.Quad, Enum.EasingDirection.Out), {
-            BackgroundColor3 = val and PALETTE.ToggleOn or PALETTE.ToggleOff
-        }):Play()
-
-        Tween(switchKnob, TweenInfo.new(0.25, Enum.EasingStyle.Back, Enum.EasingDirection.Out), {
-            Position = val and UDim2.new(1, -13, 0.5, -6) or UDim2.new(0, 1, 0.5, -6)
-        }):Play()
-
-        Tween(switchKnob, TweenInfo.new(0.1), {
-            Size = UDim2.new(0, 14, 0, 14)
-        }):Play()
-        task.delay(0.1, function()
-            Tween(switchKnob, TweenInfo.new(0.15, Enum.EasingStyle.Back, Enum.EasingDirection.Out), {
-                Size = UDim2.new(0, 12, 0, 12)
-            }):Play()
-        end)
-
-        if s.callback then pcall(s.callback, val) end
-    end)
-end
-
--- ==================== SLIDER SETTING ====================
-function SolsticeUI:_CreateSliderSetting(frame, s, moduleName)
-    local ui = self
-
-    local nameLbl = Instance.new("TextLabel")
-    nameLbl.Size = UDim2.new(0.5, 0, 0, 14)
-    nameLbl.Position = UDim2.new(0, 8, 0, 2)
-    nameLbl.BackgroundTransparency = 1
-    nameLbl.Text = s.name
-    nameLbl.TextColor3 = PALETTE.SettingText
-    nameLbl.Font = ui.Config.Font
-    nameLbl.TextSize = 11
-    nameLbl.TextXAlignment = Enum.TextXAlignment.Left
-    nameLbl.Parent = frame
-    if ui.Config.UseCustomFont then FontLoader.setFont(ui.Config.CustomFontName, nameLbl) end
-
-    local valLbl = Instance.new("TextLabel")
-    valLbl.Size = UDim2.new(0.4, 0, 0, 14)
-    valLbl.Position = UDim2.new(0.55, 0, 0, 2)
-    valLbl.BackgroundTransparency = 1
-    valLbl.Text = string.format("%.2f", s.default)
-    valLbl.TextColor3 = PALETTE.SettingValue
-    valLbl.Font = ui.Config.Font
-    valLbl.TextSize = 11
-    valLbl.TextXAlignment = Enum.TextXAlignment.Right
-    valLbl.Parent = frame
-    if ui.Config.UseCustomFont then FontLoader.setFont(ui.Config.CustomFontName, valLbl) end
-
-    local barBg = Instance.new("Frame")
-    barBg.Size = UDim2.new(1, -16, 0, 4)
-    barBg.Position = UDim2.new(0, 8, 0, 22)
-    barBg.BackgroundColor3 = PALETTE.SliderTrack
-    barBg.BorderSizePixel = 0
-    barBg.Parent = frame
-    Corner(barBg, UDim.new(0.5, 0))
-
-    local pct = (s.default - s.min) / (s.max - s.min)
-
-    local fill = Instance.new("Frame")
-    fill.Size = UDim2.new(pct, 0, 1, 0)
-    fill.BackgroundColor3 = PALETTE.SliderFill
-    fill.BorderSizePixel = 0
-    fill.Parent = barBg
-    Corner(fill, UDim.new(0.5, 0))
-
-    local hitArea = Instance.new("TextButton")
-    hitArea.Size = UDim2.new(1, 0, 1, 16)
-    hitArea.Position = UDim2.new(0, 0, 0, -8)
-    hitArea.BackgroundTransparency = 1
-    hitArea.Text = ""
-    hitArea.Parent = barBg
-    hitArea.ZIndex = 10
-
-    local thumbSize = 12
-    local thumb = Instance.new("Frame")
-    thumb.Size = UDim2.new(0, thumbSize, 0, thumbSize)
-    thumb.Position = UDim2.new(pct, -thumbSize/2, 0.5, -thumbSize/2)
-    thumb.BackgroundColor3 = PALETTE.SliderThumb
-    thumb.BorderSizePixel = 0
-    thumb.ZIndex = 5
-    thumb.Parent = barBg
-    Corner(thumb, UDim.new(0.5, 0))
-
-    local glowRing = Instance.new("Frame")
-    glowRing.Size = UDim2.new(1, 8, 1, 8)
-    glowRing.Position = UDim2.new(0, -4, 0, -4)
-    glowRing.BackgroundColor3 = PALETTE.SliderThumbGlow
-    glowRing.BackgroundTransparency = 0.75
-    glowRing.BorderSizePixel = 0
-    glowRing.ZIndex = 4
-    glowRing.Parent = thumb
-    Corner(glowRing, UDim.new(0.5, 0))
-
-    local highlight = Instance.new("Frame")
-    highlight.Size = UDim2.new(0.5, 0, 0.5, 0)
-    highlight.Position = UDim2.new(0.25, 0, 0.15, 0)
-    highlight.BackgroundColor3 = Color3.fromRGB(255, 255, 255)
-    highlight.BackgroundTransparency = 0.3
-    highlight.BorderSizePixel = 0
-    highlight.ZIndex = 6
-    highlight.Parent = thumb
-    Corner(highlight, UDim.new(0.5, 0))
-
-    local dragging = false
-    local dragTouch = nil
-
-    local function updateSlider(inputPos)
-        local relX = inputPos.X - barBg.AbsolutePosition.X
-        local sliderX = math.clamp(relX, 0, barBg.AbsoluteSize.X)
-        local newPct = sliderX / math.max(barBg.AbsoluteSize.X, 1)
-
-        Tween(fill, TweenInfo.new(0.05), {
-            Size = UDim2.new(newPct, 0, 1, 0)
-        }):Play()
-
-        Tween(thumb, TweenInfo.new(0.05), {
-            Position = UDim2.new(newPct, -thumbSize/2, 0.5, -thumbSize/2)
-        }):Play()
-
-        local val = s.min + (s.max - s.min) * newPct
-        val = math.floor(val * 100) / 100
-        valLbl.Text = string.format("%.2f", val)
-        if s.callback then pcall(s.callback, val) end
-        if ui.EnabledModules[moduleName] then
-            ui:_SetModuleState(moduleName, true, val)
-        end
-    end
-
-    local function onInputBegan(input)
-        if input.UserInputType == Enum.UserInputType.MouseButton1
-            or input.UserInputType == Enum.UserInputType.Touch then
-            dragging = true
-            dragTouch = input.UserInputType == Enum.UserInputType.Touch and input or nil
-
-            Tween(thumb, TweenInfo.new(0.12, Enum.EasingStyle.Back, Enum.EasingDirection.Out), {
-                Size = UDim2.new(0, thumbSize + 4, 0, thumbSize + 4)
-            }):Play()
-            Tween(glowRing, TweenInfo.new(0.12), {
-                BackgroundTransparency = 0.35,
-                Size = UDim2.new(1, 14, 1, 14),
-                Position = UDim2.new(0, -7, 0, -7)
-            }):Play()
-
-            updateSlider(input.Position)
-        end
-    end
-
-    hitArea.InputBegan:Connect(onInputBegan)
-    thumb.InputBegan:Connect(onInputBegan)
-
-    UserInputService.InputChanged:Connect(function(input)
-        if not dragging then return end
-        if dragTouch and input.UserInputType == Enum.UserInputType.Touch then
-            if input ~= dragTouch then return end
-            updateSlider(input.Position)
-        elseif not dragTouch and input.UserInputType == Enum.UserInputType.MouseMovement then
-            updateSlider(input.Position)
-        end
-    end)
-
-    UserInputService.InputEnded:Connect(function(input)
-        if input.UserInputType == Enum.UserInputType.MouseButton1
-            or input.UserInputType == Enum.UserInputType.Touch then
-            if dragTouch and input == dragTouch then
-                dragging = false; dragTouch = nil
-            elseif not dragTouch then
-                dragging = false
-            end
-            Tween(thumb, TweenInfo.new(0.15, Enum.EasingStyle.Back, Enum.EasingDirection.Out), {
-                Size = UDim2.new(0, thumbSize, 0, thumbSize)
-            }):Play()
-            Tween(glowRing, TweenInfo.new(0.15), {
-                BackgroundTransparency = 0.75,
-                Size = UDim2.new(1, 8, 1, 8),
-                Position = UDim2.new(0, -4, 0, -4)
-            }):Play()
-        end
-    end)
-
-    frame.MouseEnter:Connect(function()
-        Tween(barBg, TweenInfo.new(0.15), {BackgroundColor3 = Color3.fromRGB(58, 58, 68)}):Play()
-    end)
-    frame.MouseLeave:Connect(function()
-        Tween(barBg, TweenInfo.new(0.15), {BackgroundColor3 = PALETTE.SliderTrack}):Play()
-    end)
-end
-
--- ==================== BUTTON SETTING ====================
-function SolsticeUI:_CreateButtonSetting(frame, s)
-    local ui = self
-    local btn = Instance.new("TextButton")
-    btn.Size = UDim2.new(1, 0, 1, 0)
-    btn.BackgroundColor3 = Color3.fromRGB(50, 50, 58)
-    btn.BackgroundTransparency = 0.3
-    btn.BorderSizePixel = 0
-    btn.Text = s.name
-    btn.TextColor3 = PALETTE.SettingValue
-    btn.Font = ui.Config.Font
-    btn.TextSize = 11
-    btn.Parent = frame
-    Corner(btn, UDim.new(0, 2))
-    if ui.Config.UseCustomFont then FontLoader.setFont(ui.Config.CustomFontName, btn) end
-
-    local glow = Instance.new("Frame")
-    glow.Size = UDim2.new(1, 0, 1, 0)
-    glow.BackgroundColor3 = PALETTE.PressGlow
-    glow.BackgroundTransparency = 1
-    glow.BorderSizePixel = 0
-    glow.ZIndex = 0
-    glow.Parent = btn
-    Corner(glow, UDim.new(0, 2))
-
-    btn.MouseEnter:Connect(function()
-        Tween(btn, ANIM.Hover, {BackgroundTransparency = 0.1}):Play()
-    end)
-    btn.MouseLeave:Connect(function()
-        Tween(btn, ANIM.Hover, {BackgroundTransparency = 0.3}):Play()
-        Tween(btn, TweenInfo.new(0.1), {
-            Size = UDim2.new(1, 0, 1, 0)
-        }):Play()
-        Tween(glow, TweenInfo.new(0.1), {BackgroundTransparency = 1}):Play()
-    end)
-
-    btn.MouseButton1Down:Connect(function()
-        Tween(btn, TweenInfo.new(0.06), {
-            Size = UDim2.new(0.97, 0, 0.92, 0),
-            BackgroundTransparency = 0.02
-        }):Play()
-        Tween(glow, TweenInfo.new(0.06), {BackgroundTransparency = 0.35}):Play()
-    end)
-
-    btn.MouseButton1Up:Connect(function()
-        Tween(btn, TweenInfo.new(0.12, Enum.EasingStyle.Back, Enum.EasingDirection.Out), {
-            Size = UDim2.new(1, 0, 1, 0),
-            BackgroundTransparency = 0.1
-        }):Play()
-        Tween(glow, TweenInfo.new(0.15), {BackgroundTransparency = 1}):Play()
-    end)
-
-    btn.MouseButton1Click:Connect(function()
-        if s.callback then pcall(s.callback) end
-    end)
-end
-
--- ==================== KEYBIND SETTING ====================
-function SolsticeUI:_CreateKeybindSetting(frame, s)
-    local ui = self
-    local btn = Instance.new("TextButton")
-    btn.Size = UDim2.new(1, 0, 1, 0)
-    btn.BackgroundTransparency = 1
-    btn.Text = ""
-    btn.Parent = frame
-
-    local nameLbl = Instance.new("TextLabel")
-    nameLbl.Size = UDim2.new(0.5, 0, 1, 0)
-    nameLbl.Position = UDim2.new(0, 8, 0, 0)
-    nameLbl.BackgroundTransparency = 1
-    nameLbl.Text = s.name
-    nameLbl.TextColor3 = PALETTE.SettingText
-    nameLbl.Font = ui.Config.Font
-    nameLbl.TextSize = 11
-    nameLbl.TextXAlignment = Enum.TextXAlignment.Left
-    nameLbl.Parent = frame
-    if ui.Config.UseCustomFont then FontLoader.setFont(ui.Config.CustomFontName, nameLbl) end
-
-    local keyBg = Instance.new("Frame")
-    keyBg.Size = UDim2.new(0, 50, 0, 18)
-    keyBg.Position = UDim2.new(1, -58, 0.5, -9)
-    keyBg.BackgroundColor3 = Color3.fromRGB(40, 40, 48)
-    keyBg.BackgroundTransparency = 0.2
-    keyBg.BorderSizePixel = 0
-    keyBg.Parent = frame
-    Corner(keyBg, UDim.new(0, 3))
-
-    local keyLbl = Instance.new("TextLabel")
-    keyLbl.Size = UDim2.new(1, 0, 1, 0)
-    keyLbl.BackgroundTransparency = 1
-    keyLbl.Text = s.default and s.default.Name or "None"
-    keyLbl.TextColor3 = PALETTE.SettingValue
-    keyLbl.Font = ui.Config.Font
-    keyLbl.TextSize = 11
-    keyLbl.TextXAlignment = Enum.TextXAlignment.Center
-    keyLbl.Parent = keyBg
-    if ui.Config.UseCustomFont then FontLoader.setFont(ui.Config.CustomFontName, keyLbl) end
-
-    local listening = false
-    local listenConn = nil
-
-    btn.MouseButton1Click:Connect(function()
-        if listening then return end
-        listening = true
-        keyLbl.Text = "..."
-        keyLbl.TextColor3 = Color3.fromRGB(255, 200, 100)
-
-        local pulseTween = Tween(keyBg, TweenInfo.new(0.4, Enum.EasingStyle.Quad, Enum.EasingDirection.Out, -1, true), {
-            BackgroundColor3 = Color3.fromRGB(60, 60, 75)
-        })
-        pulseTween:Play()
-
-        listenConn = UserInputService.InputBegan:Connect(function(input, gameProcessed)
-            if gameProcessed then return end
-            if input.UserInputType == Enum.UserInputType.Keyboard then
-                if listenConn then listenConn:Disconnect() end
-                pulseTween:Cancel()
-                listening = false
-                local newKey = input.KeyCode
-                keyLbl.Text = newKey.Name
-                keyLbl.TextColor3 = PALETTE.SettingValue
-                Tween(keyBg, TweenInfo.new(0.2), {BackgroundColor3 = Color3.fromRGB(40, 40, 48)}):Play()
-                if s.callback then pcall(s.callback, newKey) end
-            end
-        end)
-    end)
-end
-
--- ==================== COLOR SETTING ====================
-function SolsticeUI:_CreateColorSetting(frame, s)
-    local ui = self
-    local nameLbl = Instance.new("TextLabel")
-    nameLbl.Size = UDim2.new(0.4, 0, 1, 0)
-    nameLbl.Position = UDim2.new(0, 8, 0, 0)
-    nameLbl.BackgroundTransparency = 1
-    nameLbl.Text = s.name
-    nameLbl.TextColor3 = PALETTE.SettingText
-    nameLbl.Font = ui.Config.Font
-    nameLbl.TextSize = 11
-    nameLbl.TextXAlignment = Enum.TextXAlignment.Left
-    nameLbl.Parent = frame
-    if ui.Config.UseCustomFont then FontLoader.setFont(ui.Config.CustomFontName, nameLbl) end
-
-    local colors = s.colors or {
-        Color3.fromRGB(255, 0, 0),
-        Color3.fromRGB(255, 128, 0),
-        Color3.fromRGB(255, 255, 0),
-        Color3.fromRGB(0, 255, 0),
-        Color3.fromRGB(0, 128, 255),
-        Color3.fromRGB(128, 0, 255),
-    }
-
-    local boxSize = 11
-    local spacing = 2
-    local startX = ui.Config.PanelWidth - (#colors * (boxSize + spacing)) - 6
-
-    for i, color in ipairs(colors) do
-        local box = Instance.new("TextButton")
-        box.Size = UDim2.new(0, boxSize, 0, boxSize)
-        box.Position = UDim2.new(0, startX + (i-1) * (boxSize + spacing), 0.5, -boxSize/2)
-        box.BackgroundColor3 = color
-        box.BorderSizePixel = 0
-        box.Text = ""
-        box.Parent = frame
-        Corner(box, UDim.new(0, 2))
-
-        box.MouseEnter:Connect(function()
-            Tween(box, TweenInfo.new(0.1), {
-                Size = UDim2.new(0, boxSize+2, 0, boxSize+2),
-                Position = UDim2.new(0, startX + (i-1) * (boxSize + spacing) - 1, 0.5, -boxSize/2 - 1)
-            }):Play()
-        end)
-        box.MouseLeave:Connect(function()
-            Tween(box, TweenInfo.new(0.1), {
-                Size = UDim2.new(0, boxSize, 0, boxSize),
-                Position = UDim2.new(0, startX + (i-1) * (boxSize + spacing), 0.5, -boxSize/2)
-            }):Play()
-        end)
-
-        box.MouseButton1Click:Connect(function()
-            if s.callback then pcall(s.callback, color) end
-        end)
-    end
-end
-
--- ==================== DROPDOWN SETTING ====================
-function SolsticeUI:_CreateDropdownSetting(frame, s)
-    local ui = self
-    local btn = Instance.new("TextButton")
-    btn.Size = UDim2.new(1, 0, 1, 0)
-    btn.BackgroundTransparency = 1
-    btn.Text = ""
-    btn.Parent = frame
-
-    local nameLbl = Instance.new("TextLabel")
-    nameLbl.Size = UDim2.new(0.4, 0, 1, 0)
-    nameLbl.Position = UDim2.new(0, 8, 0, 0)
-    nameLbl.BackgroundTransparency = 1
-    nameLbl.Text = s.name
-    nameLbl.TextColor3 = PALETTE.SettingText
-    nameLbl.Font = ui.Config.Font
-    nameLbl.TextSize = 11
-    nameLbl.TextXAlignment = Enum.TextXAlignment.Left
-    nameLbl.Parent = frame
-    if ui.Config.UseCustomFont then FontLoader.setFont(ui.Config.CustomFontName, nameLbl) end
-
-    local valLbl = Instance.new("TextLabel")
-    valLbl.Size = UDim2.new(0.5, 0, 1, 0)
-    valLbl.Position = UDim2.new(0.45, 0, 0, 0)
-    valLbl.BackgroundTransparency = 1
-    valLbl.Text = s.default or "Select..."
-    valLbl.TextColor3 = PALETTE.SettingValue
-    valLbl.Font = ui.Config.Font
-    valLbl.TextSize = 11
-    valLbl.TextXAlignment = Enum.TextXAlignment.Right
-    valLbl.Parent = frame
-    if ui.Config.UseCustomFont then FontLoader.setFont(ui.Config.CustomFontName, valLbl) end
-
-    btn.MouseButton1Click:Connect(function()
-        if s.options then
-            local current = valLbl.Text
-            local idx = 1
-            for i, opt in ipairs(s.options) do
-                if opt == current then idx = i; break end
-            end
-            idx = idx % #s.options + 1
-            valLbl.Text = s.options[idx]
-            if s.callback then pcall(s.callback, s.options[idx]) end
-        end
-    end)
-end
-
--- ==================== PUBLIC API ====================
-function SolsticeUI:IsEnabled(name)
-    return self.EnabledModules[name] and self.EnabledModules[name].state or false
-end
-
-function SolsticeUI:ToggleModule(name)
-    local mod = self.AllModules[name]
-    if mod and mod.Toggle then mod.Toggle() end
-end
-
-function SolsticeUI:SetValue(name, value)
-    self:_SetModuleState(name, self:IsEnabled(name), value)
-end
-
-function SolsticeUI:Destroy()
-    if self.ClickGui then self.ClickGui:Destroy() end
-    if self.HudGui then self.HudGui:Destroy() end
-    self.EnabledModules = {}
-    self.AllModules = {}
-    self.Panels = {}
-    self.ArrayListItems = {}
-end
-
-return SolsticeUI
