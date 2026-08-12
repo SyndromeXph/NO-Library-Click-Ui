@@ -99,207 +99,6 @@ local PALETTE = {
 }
 
 -- ==================== ANIMATION PRESETS ====================
-
-local MathUtils = {}
-
-function MathUtils.lerp(a, b, t)
-    return a + t * (b - a)
-end
-
-function MathUtils.clamp(value, min, max)
-    return math.max(min, math.min(value, max))
-end
-
--- ============================================================
--- 3. ColorUtils - 颜色工具
--- ============================================================
-local ColorUtils = {}
-
-ColorUtils.theme = {
-    Color3.fromRGB(233, 168, 188),  -- #E9A8BC 浅粉
-    Color3.fromRGB(110, 200, 241),  -- #6EC8F1 浅蓝
-    Color3.new(1, 1, 1),            -- 白色
-}
-
-function ColorUtils.hsvToRgb(h, s, v)
-    local r, g, b
-    local i = math.floor(h * 6)
-    local f = h * 6 - i
-    local p = v * (1 - s)
-    local q = v * (1 - f * s)
-    local t = v * (1 - (1 - f) * s)
-
-    i = i % 6
-    if i == 0 then r, g, b = v, t, p
-    elseif i == 1 then r, g, b = q, v, p
-    elseif i == 2 then r, g, b = p, v, t
-    elseif i == 3 then r, g, b = p, q, v
-    elseif i == 4 then r, g, b = t, p, v
-    else r, g, b = v, p, q end
-
-    return Color3.new(r, g, b)
-end
-
-function ColorUtils.lerpColors(seconds, index, colors)
-    if #colors == 0 then return Color3.new(1, 1, 1) end
-    local time = 10000 / seconds
-    local angle = (tick() * 1000 + index) % time
-    local segmentTime = time / #colors
-    local segmentIndex = math.floor(angle / segmentTime)
-    local segmentIndexFloat = angle / segmentTime - segmentIndex
-    local startColor = colors[segmentIndex + 1]
-    local endColor = colors[(segmentIndex + 1) % #colors + 1]
-
-    return startColor:Lerp(endColor, segmentIndexFloat)
-end
-
-function ColorUtils.getThemedColor(index)
-    return ColorUtils.lerpColors(3.0, index, ColorUtils.theme)
-end
-
--- ============================================================
--- 4. Module 数据结构
--- ============================================================
-local Module = {}
-Module.__index = Module
-
-function Module.new(name, settingDisplay, enabled)
-    local self = setmetatable({}, Module)
-    self.name = name or ""
-    self.settingDisplay = settingDisplay or ""
-    self.enabled = enabled or false
-    self.visibleInArrayList = true
-    self.key = 0
-    self.arrayListAnim = 0
-    self.lastEnabledTime = enabled and tick() or 0
-    return self
-end
-
-function Module:setState(state)
-    if state and not self.enabled then
-        self.lastEnabledTime = tick()
-    end
-    self.enabled = state
-end
-
--- ============================================================
--- 5. Arraylist - 模块列表系统
--- ============================================================
-local Arraylist = {}
-Arraylist.__index = Arraylist
-
-Arraylist.Display = {
-    Outline = 0,
-    Bar = 1,
-    Split = 2,
-    None = 3,
-}
-
-function Arraylist.new()
-    local self = setmetatable({}, Arraylist)
-    self.mModules = {}
-    self.mInitialized = false
-    self.mDisplay = Arraylist.Display.Split
-    self.mGlow = true
-    self.mGlowStrength = 1.9
-    self.mGlowDensity = 2
-    self.mFontSize = 15.0
-    self.mTopOffset = 10.0
-    self.mRightOffset = 30.0
-    self.mTextShadow = true
-    self.mShadowOffset = 1.0
-    return self
-end
-
-function Arraylist:initModules()
-    if self.mInitialized then return end
-    self.mInitialized = true
-end
-
-function Arraylist:setModuleState(name, setting, enabled)
-    for _, mod in ipairs(self.mModules) do
-        if mod.name == name then
-            mod:setState(enabled)
-            return
-        end
-    end
-    local mod = Module.new(name, setting, enabled)
-    mod.visibleInArrayList = true
-    table.insert(self.mModules, mod)
-end
-
-function Arraylist:setGlow(enabled) self.mGlow = enabled end
-function Arraylist:setGlowDensity(density) self.mGlowDensity = density end
-function Arraylist:setGlowRadius(radius) self.mGlowStrength = radius end
-function Arraylist:setRightOffset(offset) self.mRightOffset = offset end
-function Arraylist:setTopOffset(offset) self.mTopOffset = offset end
-function Arraylist:setDisplay(mode) self.mDisplay = mode end
-function Arraylist:setTextShadow(enabled) self.mTextShadow = enabled end
-function Arraylist:setShadowOffset(offset) self.mShadowOffset = offset end
-function Arraylist:setFontSize(size) self.mFontSize = size end
-
--- ============================================================
--- 6. SolsticeUI - 主控制器
--- ============================================================
-local SolsticeUI = {}
-SolsticeUI.__index = SolsticeUI
-
-function SolsticeUI.new()
-    local self = setmetatable({}, SolsticeUI)
-    self.arraylist = Arraylist.new()
-    self.initialized = false
-    return self
-end
-
-function SolsticeUI:init()
-    self.arraylist:initModules()
-    self.initialized = true
-end
-
-function SolsticeUI:setGlow(enabled) self.arraylist:setGlow(enabled) end
-function SolsticeUI:setGlowDensity(density) self.arraylist:setGlowDensity(density) end
-function SolsticeUI:setGlowRadius(radius) self.arraylist:setGlowRadius(radius) end
-function SolsticeUI:setRightOffset(offset) self.arraylist:setRightOffset(offset) end
-function SolsticeUI:setTopOffset(offset) self.arraylist:setTopOffset(offset) end
-function SolsticeUI:setDisplay(mode) self.arraylist:setDisplay(mode) end
-function SolsticeUI:setTextShadow(enabled) self.arraylist:setTextShadow(enabled) end
-function SolsticeUI:setShadowOffset(offset) self.arraylist:setShadowOffset(offset) end
-function SolsticeUI:setFontSize(size) self.arraylist:setFontSize(size) end
-
-function SolsticeUI:setModuleState(name, mode, enabled)
-    self.arraylist:setModuleState(name, mode, enabled)
-end
-
--- ============================================================
--- 7. 模块定义（单一数据源）
--- ============================================================
-local MODULE_DEFINITIONS = {
-    {"VAPE V4", "User Mlx1nGCNya", true},
-    {"KillAura", "Single", true},
-    {"Speed", "Strafe", true},
-    {"Fly", "Vanilla", false},
-    {"Scaffold", "Normal", true},
-    {"NoFall", "", true},
-    {"Velocity", "", false},
-    {"ChestStealer", "Silent", true},
-    {"AutoArmor", "", true},
-    {"Sprint", "", true},
-    {"InventoryMove", "", true},
-    {"Criticals", "Packet", true},
-    {"AntiBot", "", true},
-    {"Teams", "", true},
-    {"ESP", "2D", true},
-    {"Tracers", "", false},
-    {"Arraylist", "Split", true},
-}
-
-function SolsticeUI:initDefaultModules()
-    for _, mod in ipairs(MODULE_DEFINITIONS) do
-        self:setModuleState(mod[1], mod[2], mod[3])
-    end
-end
-
-
 local ANIM = {
     Quick = TweenInfo.new(0.08, Enum.EasingStyle.Quad, Enum.EasingDirection.Out),
     Standard = TweenInfo.new(0.18, Enum.EasingStyle.Quad, Enum.EasingDirection.Out),
@@ -471,16 +270,15 @@ function SolsticeUI.new(userConfig)
     self.EnabledModules = {}
     self.AllModules = {}
     self.Panels = {}
-    self.V4Arraylist = nil
-    self.V4ModuleUIs = {}
-    self.V4ArraylistFrame = nil
+    self.ArrayListItems = {}
+    self.RainbowOffset = 0
     self.NextPanelX = self.Config.StartX
     self.NextPanelY = self.Config.StartY
     self.PanelLoadQueue = {}
 
     self:_InitWatermark()
     self:_InitSearchBar()
-    self:_InitV4Arraylist()
+    self:_InitArrayList()
     self:_InitNotifications()
     self:_StartRenderLoop()
     self:_BindToggleKey()
@@ -655,7 +453,188 @@ function SolsticeUI:_FilterModules(query)
 end
 
 -- ==================== ARRAY LIST ====================
+function SolsticeUI:_InitArrayList()
+    self.ArrayListMaster = Instance.new("Frame")
+    self.ArrayListMaster.Name = "ArrayListMaster"
+    self.ArrayListMaster.AnchorPoint = Vector2.new(1, 0)
+    self.ArrayListMaster.Position = UDim2.new(1, -8, 0, 6)
+    self.ArrayListMaster.BackgroundTransparency = 1
+    self.ArrayListMaster.Parent = self.HudGui
 
+    self.ArrayListContent = Instance.new("Frame")
+    self.ArrayListContent.Size = UDim2.new(1, 0, 1, 0)
+    self.ArrayListContent.BackgroundTransparency = 1
+    self.ArrayListContent.Parent = self.ArrayListMaster
+
+    local layout = Instance.new("UIListLayout")
+    layout.SortOrder = Enum.SortOrder.LayoutOrder
+    layout.HorizontalAlignment = Enum.HorizontalAlignment.Right
+    layout.Padding = UDim.new(0, 1)
+    layout.Parent = self.ArrayListContent
+end
+
+function SolsticeUI:_UpdateArrayList()
+    if not self.ARRAYLIST_ENABLED then
+        self.ArrayListMaster.Visible = false
+        return
+    end
+
+    local enabled = {}
+    for name, data in pairs(self.EnabledModules) do
+        if data.state then
+            local display = name
+            if data.value and tostring(data.value) ~= "" then
+                display = name .. " " .. tostring(data.value)
+            end
+            table.insert(enabled, {name = name, display = display})
+        end
+    end
+
+    if #enabled == 0 then
+        self.ArrayListMaster.Visible = false
+        return
+    end
+
+    self.ArrayListMaster.Visible = true
+
+    table.sort(enabled, function(a, b)
+        return GetTextWidth(a.display, self.Config.ArrayListFont, self.Config.ArrayListTextSize) >
+               GetTextWidth(b.display, self.Config.ArrayListFont, self.Config.ArrayListTextSize)
+    end)
+
+    local activeNames = {}
+    for _, data in ipairs(enabled) do
+        activeNames[data.name] = true
+    end
+
+    for name, itemFrame in pairs(self.ArrayListItems) do
+        if not activeNames[name] and itemFrame.Visible then
+            itemFrame.Visible = false
+            local bg = itemFrame:FindFirstChild("BgBar")
+            local txt = itemFrame:FindFirstChild("TextLabel")
+            if bg and txt then
+                local tw = GetTextWidth(txt.Text, self.Config.ArrayListFont, self.Config.ArrayListTextSize) + 10
+                Tween(bg, TweenInfo.new(self.Config.ArrayListAnimSpeed, Enum.EasingStyle.Back, Enum.EasingDirection.In), {
+                    Position = UDim2.new(0, tw + 50, 0, 0),
+                    BackgroundTransparency = 1
+                }):Play()
+                Tween(txt, TweenInfo.new(self.Config.ArrayListAnimSpeed * 0.8, Enum.EasingStyle.Quad, Enum.EasingDirection.In), {
+                    Position = UDim2.new(0, tw + 30, 0, 0),
+                    TextTransparency = 1
+                }):Play()
+            end
+            task.delay(self.Config.ArrayListAnimSpeed + 0.1, function()
+                if itemFrame and itemFrame.Parent then
+                    itemFrame.Visible = false
+                end
+            end)
+        end
+    end
+
+    local maxW = 0
+    for i, data in ipairs(enabled) do
+        local itemFrame = self.ArrayListItems[data.name]
+        local isNew = false
+
+        if not itemFrame then
+            isNew = true
+            itemFrame = Instance.new("Frame")
+            itemFrame.Name = data.name .. "_AL"
+            itemFrame.BackgroundTransparency = 1
+            itemFrame.ClipsDescendants = false
+            itemFrame.Parent = self.ArrayListContent
+
+            local bgBar = Instance.new("Frame")
+            bgBar.Name = "BgBar"
+            bgBar.Size = UDim2.new(0, 0, 1, 0)
+            bgBar.Position = UDim2.new(0, 0, 0, 0)
+            bgBar.BackgroundColor3 = PALETTE.ArrayListBg
+            bgBar.BackgroundTransparency = 1
+            bgBar.BorderSizePixel = 0
+            bgBar.ZIndex = 1
+            bgBar.Parent = itemFrame
+
+            local txt = Instance.new("TextLabel")
+            txt.Name = "TextLabel"
+            txt.Size = UDim2.new(0, 0, 1, 0)
+            txt.Position = UDim2.new(0, 0, 0, 0)
+            txt.BackgroundTransparency = 1
+            txt.Font = self.Config.ArrayListFont
+            txt.TextSize = self.Config.ArrayListTextSize
+            txt.TextXAlignment = Enum.TextXAlignment.Right
+            txt.TextTransparency = 1
+            txt.ZIndex = 2
+            txt.Parent = itemFrame
+            if self.Config.UseCustomFont then FontLoader.setFont(self.Config.CustomFontName, txt) end
+
+            self.ArrayListItems[data.name] = itemFrame
+        end
+
+        itemFrame.Visible = true
+        itemFrame.LayoutOrder = i
+
+        local txt = itemFrame:FindFirstChild("TextLabel")
+        local bgBar = itemFrame:FindFirstChild("BgBar")
+
+        if txt then
+            txt.Text = data.display
+        end
+
+        local tw = GetTextWidth(data.display, self.Config.ArrayListFont, self.Config.ArrayListTextSize) + 10
+        if tw > maxW then maxW = tw end
+
+        itemFrame.Size = UDim2.new(0, tw, 0, self.Config.ArrayListItemHeight)
+
+        if txt then
+            txt.Size = UDim2.new(0, tw, 1, 0)
+        end
+        if bgBar then
+            bgBar.Size = UDim2.new(0, tw, 1, 0)
+        end
+
+        if isNew then
+            if bgBar then
+                bgBar.Position = UDim2.new(0, tw + 50, 0, 0)
+                Tween(bgBar, TweenInfo.new(self.Config.ArrayListAnimSpeed, Enum.EasingStyle.Back, Enum.EasingDirection.Out), {
+                    Position = UDim2.new(0, 0, 0, 0),
+                    BackgroundTransparency = PALETTE.ArrayListBgTransparency
+                }):Play()
+            end
+            if txt then
+                txt.Position = UDim2.new(0, tw + 30, 0, 0)
+                Tween(txt, TweenInfo.new(self.Config.ArrayListAnimSpeed * 0.9, Enum.EasingStyle.Back, Enum.EasingDirection.Out), {
+                    Position = UDim2.new(0, 0, 0, 0),
+                    TextTransparency = 0
+                }):Play()
+            end
+        else
+            if bgBar then
+                bgBar.Position = UDim2.new(0, 0, 0, 0)
+                bgBar.BackgroundTransparency = PALETTE.ArrayListBgTransparency
+            end
+            if txt then
+                txt.Position = UDim2.new(0, 0, 0, 0)
+                txt.TextTransparency = 0
+            end
+        end
+    end
+
+    self.ArrayListMaster.Size = UDim2.new(0, maxW, 0, #enabled * (self.Config.ArrayListItemHeight + 1))
+end
+
+function SolsticeUI:_SetModuleState(name, state, value)
+    if not self.EnabledModules[name] then
+        self.EnabledModules[name] = {state = false, value = ""}
+    end
+    self.EnabledModules[name].state = state
+    if value ~= nil then
+        self.EnabledModules[name].value = value
+    end
+    self:_SaveModuleState(name, state, value)
+    self:_UpdateArrayList()
+end
+
+-- ==================== NOTIFICATIONS ====================
 function SolsticeUI:_InitNotifications()
     if not self.Config.ShowNotifications then return end
     self.NotifContainer = Instance.new("Frame")
@@ -738,36 +717,18 @@ end
 
 -- ==================== RENDER LOOP ====================
 function SolsticeUI:_StartRenderLoop()
-    local lastTime = tick()
     RunService.RenderStepped:Connect(function(dt)
-        local currentTime = tick()
-        local deltaTime = currentTime - lastTime
-        lastTime = currentTime
-        if deltaTime <= 0 or deltaTime > 1 then
-            deltaTime = 1 / 60
-        end
-
-        -- V4 Arraylist 入场动画
-        if self.V4Arraylist then
-            for _, mod in ipairs(self.V4Arraylist.mModules) do
-                mod.arrayListAnim = MathUtils.lerp(mod.arrayListAnim, mod.enabled and 1.0 or 0.0, deltaTime * 14.0)
-                mod.arrayListAnim = MathUtils.clamp(mod.arrayListAnim, 0.0, 1.0)
-            end
-        end
-
-        -- V4 Arraylist 退场动画
-        if self.V4ModuleUIs then
-            for _, ui in pairs(self.V4ModuleUIs) do
-                if ui.isExiting then
-                    ui.exitAnim = MathUtils.lerp(ui.exitAnim, 0.0, deltaTime * 14.0)
-                    ui.exitAnim = MathUtils.clamp(ui.exitAnim, 0.0, 1.0)
+        if self.ARRAYLIST_ENABLED then
+            self.RainbowOffset = (self.RainbowOffset + dt * self.Config.ArrayListRainbowSpeed) % 1
+            for name, itemFrame in pairs(self.ArrayListItems) do
+                if itemFrame.Visible then
+                    local txt = itemFrame:FindFirstChild("TextLabel")
+                    if txt then
+                        local hue = (self.RainbowOffset + (itemFrame.LayoutOrder - 1) * 0.055) % 1
+                        txt.TextColor3 = HSVtoRGB(hue, 0.78, 1)
+                    end
                 end
             end
-        end
-
-        -- 更新 V4 Arraylist 视觉
-        if self.V4Arraylist then
-            self:_V4UpdateArraylist()
         end
     end)
 end
@@ -971,9 +932,7 @@ function SolsticeUI:_CreateFeature(content, panelData, feat)
             btn.BackgroundTransparency = 0
             btn.TextColor3 = PALETTE.ActiveText
             activeGrad.Enabled = true
-            if ui.V4Arraylist then
-                ui.V4Arraylist:setModuleState(feat.name, "", true)
-            end
+            ui:_SetModuleState(feat.name, true, ui.SavedConfig.modules[feat.name].value)
             if feat.callback then pcall(feat.callback, true) end
         end
     end
@@ -998,10 +957,7 @@ function SolsticeUI:_CreateFeature(content, panelData, feat)
     local function doToggle()
         if featType == "button" then return end
         enabled = not enabled
-        -- V4 Arraylist state update
-        if ui.V4Arraylist then
-            ui.V4Arraylist:setModuleState(feat.name, "", enabled)
-        end
+        ui:_SetModuleState(feat.name, enabled)
         if enabled then
             Tween(btn, ANIM.Standard, {
                 BackgroundColor3 = PALETTE.ActiveBg,
@@ -1694,54 +1650,21 @@ end
 
 -- ==================== PUBLIC API ====================
 function SolsticeUI:IsEnabled(name)
-    if self.V4Arraylist then
-        for _, mod in ipairs(self.V4Arraylist.mModules) do
-            if mod.name == name then
-                return mod.enabled
-            end
-        end
-    end
     return self.EnabledModules[name] and self.EnabledModules[name].state or false
 end
 
 function SolsticeUI:ToggleModule(name)
     local mod = self.AllModules[name]
     if mod and mod.Toggle then mod.Toggle() end
-    if self.V4Arraylist then
-        local v4mod = nil
-        for _, m in ipairs(self.V4Arraylist.mModules) do
-            if m.name == name then
-                v4mod = m
-                break
-            end
-        end
-        if v4mod then
-            self.V4Arraylist:setModuleState(name, "", not v4mod.enabled)
-        else
-            self.V4Arraylist:setModuleState(name, "", true)
-        end
-    end
 end
 
 function SolsticeUI:SetValue(name, value)
-    if self.V4Arraylist then
-        for _, mod in ipairs(self.V4Arraylist.mModules) do
-            if mod.name == name then
-                mod.settingDisplay = tostring(value)
-                break
-            end
-        end
-    end
+    self:_SetModuleState(name, self:IsEnabled(name), value)
 end
 
 function SolsticeUI:Destroy()
     if self.ClickGui then self.ClickGui:Destroy() end
     if self.HudGui then self.HudGui:Destroy() end
-    if self.V4ArraylistFrame and self.V4ArraylistFrame.Parent then
-        self.V4ArraylistFrame.Parent:Destroy()
-    end
-    self.V4Arraylist = nil
-    self.V4ModuleUIs = {}
     self.EnabledModules = {}
     self.AllModules = {}
     self.Panels = {}
@@ -1749,226 +1672,3 @@ function SolsticeUI:Destroy()
 end
 
 return SolsticeUI
--- ==================== V4 ARRAYLIST INIT ====================
-function SolsticeUI:_InitV4Arraylist()
-    local al = Arraylist.new()
-    al:initModules()
-    self.V4Arraylist = al
-    self.V4ModuleUIs = {}
-
-    local screenGui = Instance.new("ScreenGui")
-    screenGui.Name = "SolsticeV4_Arraylist"
-    screenGui.ResetOnSpawn = false
-    screenGui.ZIndexBehavior = Enum.ZIndexBehavior.Global
-    screenGui.Parent = self.HudGui.Parent
-
-    local arraylistFrame = Instance.new("Frame")
-    arraylistFrame.Name = "Arraylist"
-    arraylistFrame.BackgroundTransparency = 1
-    arraylistFrame.Size = UDim2.new(0, 400, 1, -10)
-    arraylistFrame.Position = UDim2.new(1, -410, 0, 6)
-    arraylistFrame.Parent = screenGui
-
-    local arraylistLayout = Instance.new("UIListLayout")
-    arraylistLayout.SortOrder = Enum.SortOrder.LayoutOrder
-    arraylistLayout.HorizontalAlignment = Enum.HorizontalAlignment.Right
-    arraylistLayout.VerticalAlignment = Enum.VerticalAlignment.Top
-    arraylistLayout.Padding = UDim.new(0, 2)
-    arraylistLayout.Parent = arraylistFrame
-
-    self.V4ArraylistFrame = arraylistFrame
-
-    function self:_V4CreateModuleUI(modName, parentFrame)
-        local container = Instance.new("Frame")
-        container.Name = modName .. "_Container"
-        container.BackgroundColor3 = Color3.fromRGB(20, 20, 20)
-        container.BorderSizePixel = 0
-        container.ClipsDescendants = true
-        container.Parent = parentFrame
-
-        local corner = Instance.new("UICorner")
-        corner.CornerRadius = UDim.new(0, 4)
-        corner.Parent = container
-
-        local outline = Instance.new("UIStroke")
-        outline.Name = "Outline"
-        outline.Thickness = 1
-        outline.Transparency = 1
-        outline.Parent = container
-
-        local glow = Instance.new("UIStroke")
-        glow.Name = "Glow"
-        glow.Thickness = 2
-        glow.Transparency = 1
-        glow.Parent = container
-
-        local label = Instance.new("TextLabel")
-        label.Name = "Text"
-        label.BackgroundTransparency = 1
-        label.Size = UDim2.new(1, -16, 1, 0)
-        label.Position = UDim2.new(0, 8, 0, 0)
-        label.Font = Enum.Font.GothamBold
-        label.TextXAlignment = Enum.TextXAlignment.Right
-        label.TextYAlignment = Enum.TextYAlignment.Center
-        label.Parent = container
-
-        local bar = Instance.new("Frame")
-        bar.Name = "Bar"
-        bar.BackgroundTransparency = 0
-        bar.Size = UDim2.new(0, 3, 1, -4)
-        bar.Position = UDim2.new(1, -6, 0, 2)
-        bar.AnchorPoint = Vector2.new(0, 0)
-        bar.Parent = container
-        local barCorner = Instance.new("UICorner")
-        barCorner.CornerRadius = UDim.new(1, 0)
-        barCorner.Parent = bar
-
-        local padding = Instance.new("UIPadding")
-        padding.PaddingLeft = UDim.new(0, 10)
-        padding.PaddingRight = UDim.new(0, 10)
-        padding.Parent = container
-
-        return {
-            container = container,
-            bar = bar,
-            outline = outline,
-            glow = glow,
-            label = label,
-            currentAnim = 0,
-            isExiting = false,
-            exitAnim = 0,
-        }
-    end
-
-    function self:_V4UpdateArraylist()
-        local al = self.V4Arraylist
-        local allModules = {}
-        for _, mod in ipairs(al.mModules) do
-            if mod.visibleInArrayList then
-                table.insert(allModules, mod)
-            end
-        end
-
-        table.sort(allModules, function(a, b)
-            return (a.lastEnabledTime or 0) < (b.lastEnabledTime or 0)
-        end)
-
-        local enabledSet = {}
-        for _, mod in ipairs(allModules) do
-            if mod.enabled then
-                enabledSet[mod.name] = true
-            end
-        end
-
-        for name, ui in pairs(self.V4ModuleUIs) do
-            if not enabledSet[name] then
-                if not ui.isExiting then
-                    ui.isExiting = true
-                    ui.exitAnim = ui.currentAnim
-                end
-            else
-                ui.isExiting = false
-                ui.exitAnim = 0
-            end
-        end
-
-        local renderIndex = 0
-        for _, mod in ipairs(allModules) do
-            local ui = self.V4ModuleUIs[mod.name]
-            local isEnabled = mod.enabled
-            local isExiting = ui and ui.isExiting
-
-            if not ui and not isEnabled then
-                continue
-            end
-
-            if not ui then
-                ui = self:_V4CreateModuleUI(mod.name, self.V4ArraylistFrame)
-                self.V4ModuleUIs[mod.name] = ui
-            end
-
-            ui.currentAnim = mod.arrayListAnim
-
-            local anim
-            if isEnabled then
-                anim = mod.arrayListAnim
-            elseif isExiting then
-                anim = ui.exitAnim
-            else
-                ui.container.Visible = false
-                ui.container.Size = UDim2.new(0, 0, 0, 0)
-                continue
-            end
-
-            if anim < 0.01 then
-                ui.container.Visible = false
-                ui.container.Size = UDim2.new(0, 0, 0, 0)
-                continue
-            end
-
-            renderIndex = renderIndex + 1
-
-            local displayText = mod.name
-            if mod.settingDisplay ~= "" then
-                displayText = displayText .. " " .. mod.settingDisplay
-            end
-
-            local color = ColorUtils.getThemedColor(renderIndex * 100)
-
-            local displayColor = color
-            if isExiting then
-                displayColor = color:Lerp(Color3.fromRGB(100, 100, 100), 1 - anim)
-            end
-
-            local targetHeight = math.max(0, (al.mFontSize + 8) * anim)
-            ui.container.Size = UDim2.new(0, 0, 0, targetHeight)
-            ui.container.AutomaticSize = anim > 0.01 and Enum.AutomaticSize.X or Enum.AutomaticSize.None
-            ui.container.BackgroundTransparency = 1 - (0.7 * anim)
-            ui.container.Visible = true
-            ui.container.LayoutOrder = mod.lastEnabledTime or 0
-
-            ui.label.Text = displayText
-            ui.label.TextSize = al.mFontSize
-            ui.label.TextColor3 = displayColor
-
-            if al.mTextShadow then
-                ui.label.TextStrokeTransparency = math.clamp(0.5 - (al.mShadowOffset * 0.15), 0, 1)
-                ui.label.TextStrokeColor3 = Color3.new(0, 0, 0)
-            else
-                ui.label.TextStrokeTransparency = 1
-            end
-
-            ui.bar.BackgroundColor3 = displayColor
-
-            local displayMode = al.mDisplay
-            if displayMode == Arraylist.Display.None then
-                ui.bar.Visible = false
-                ui.outline.Transparency = 1
-                ui.glow.Transparency = 1
-                ui.glow.Enabled = false
-            elseif displayMode == Arraylist.Display.Bar then
-                ui.bar.Visible = true
-                ui.outline.Transparency = 1
-                ui.glow.Transparency = 1
-            elseif displayMode == Arraylist.Display.Outline then
-                ui.bar.Visible = false
-                ui.outline.Transparency = 1 - (0.6 * anim)
-                ui.outline.Color = displayColor
-                local glowAlpha = al.mGlow and (0.5 * anim * (al.mGlowDensity / 5)) or 0
-                ui.glow.Transparency = 1 - glowAlpha
-                ui.glow.Color = displayColor
-                ui.glow.Thickness = al.mGlowStrength
-            elseif displayMode == Arraylist.Display.Split then
-                ui.bar.Visible = true
-                ui.outline.Transparency = 1 - (0.4 * anim)
-                ui.outline.Color = displayColor
-                local glowAlpha = al.mGlow and (0.4 * anim * (al.mGlowDensity / 5)) or 0
-                ui.glow.Transparency = 1 - glowAlpha
-                ui.glow.Color = displayColor
-                ui.glow.Thickness = al.mGlowStrength
-            end
-        end
-    end
-end
-
-
