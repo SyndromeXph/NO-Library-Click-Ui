@@ -100,7 +100,6 @@ local PALETTE = {
 
 -- ==================== ANIMATION PRESETS ====================
 
--- ==================== V4 ARRAYLIST SYSTEM ====================
 local MathUtils = {}
 
 function MathUtils.lerp(a, b, t)
@@ -111,12 +110,15 @@ function MathUtils.clamp(value, min, max)
     return math.max(min, math.min(value, max))
 end
 
+-- ============================================================
+-- 3. ColorUtils - 颜色工具
+-- ============================================================
 local ColorUtils = {}
 
 ColorUtils.theme = {
-    Color3.fromRGB(233, 168, 188),
-    Color3.fromRGB(110, 200, 241),
-    Color3.new(1, 1, 1),
+    Color3.fromRGB(233, 168, 188),  -- #E9A8BC 浅粉
+    Color3.fromRGB(110, 200, 241),  -- #6EC8F1 浅蓝
+    Color3.new(1, 1, 1),            -- 白色
 }
 
 function ColorUtils.hsvToRgb(h, s, v)
@@ -155,6 +157,9 @@ function ColorUtils.getThemedColor(index)
     return ColorUtils.lerpColors(3.0, index, ColorUtils.theme)
 end
 
+-- ============================================================
+-- 4. Module 数据结构
+-- ============================================================
 local Module = {}
 Module.__index = Module
 
@@ -177,6 +182,9 @@ function Module:setState(state)
     self.enabled = state
 end
 
+-- ============================================================
+-- 5. Arraylist - 模块列表系统
+-- ============================================================
 local Arraylist = {}
 Arraylist.__index = Arraylist
 
@@ -229,6 +237,67 @@ function Arraylist:setDisplay(mode) self.mDisplay = mode end
 function Arraylist:setTextShadow(enabled) self.mTextShadow = enabled end
 function Arraylist:setShadowOffset(offset) self.mShadowOffset = offset end
 function Arraylist:setFontSize(size) self.mFontSize = size end
+
+-- ============================================================
+-- 6. SolsticeUI - 主控制器
+-- ============================================================
+local SolsticeUI = {}
+SolsticeUI.__index = SolsticeUI
+
+function SolsticeUI.new()
+    local self = setmetatable({}, SolsticeUI)
+    self.arraylist = Arraylist.new()
+    self.initialized = false
+    return self
+end
+
+function SolsticeUI:init()
+    self.arraylist:initModules()
+    self.initialized = true
+end
+
+function SolsticeUI:setGlow(enabled) self.arraylist:setGlow(enabled) end
+function SolsticeUI:setGlowDensity(density) self.arraylist:setGlowDensity(density) end
+function SolsticeUI:setGlowRadius(radius) self.arraylist:setGlowRadius(radius) end
+function SolsticeUI:setRightOffset(offset) self.arraylist:setRightOffset(offset) end
+function SolsticeUI:setTopOffset(offset) self.arraylist:setTopOffset(offset) end
+function SolsticeUI:setDisplay(mode) self.arraylist:setDisplay(mode) end
+function SolsticeUI:setTextShadow(enabled) self.arraylist:setTextShadow(enabled) end
+function SolsticeUI:setShadowOffset(offset) self.arraylist:setShadowOffset(offset) end
+function SolsticeUI:setFontSize(size) self.arraylist:setFontSize(size) end
+
+function SolsticeUI:setModuleState(name, mode, enabled)
+    self.arraylist:setModuleState(name, mode, enabled)
+end
+
+-- ============================================================
+-- 7. 模块定义（单一数据源）
+-- ============================================================
+local MODULE_DEFINITIONS = {
+    {"VAPE V4", "User Mlx1nGCNya", true},
+    {"KillAura", "Single", true},
+    {"Speed", "Strafe", true},
+    {"Fly", "Vanilla", false},
+    {"Scaffold", "Normal", true},
+    {"NoFall", "", true},
+    {"Velocity", "", false},
+    {"ChestStealer", "Silent", true},
+    {"AutoArmor", "", true},
+    {"Sprint", "", true},
+    {"InventoryMove", "", true},
+    {"Criticals", "Packet", true},
+    {"AntiBot", "", true},
+    {"Teams", "", true},
+    {"ESP", "2D", true},
+    {"Tracers", "", false},
+    {"Arraylist", "Split", true},
+}
+
+function SolsticeUI:initDefaultModules()
+    for _, mod in ipairs(MODULE_DEFINITIONS) do
+        self:setModuleState(mod[1], mod[2], mod[3])
+    end
+end
 
 
 local ANIM = {
@@ -402,15 +471,16 @@ function SolsticeUI.new(userConfig)
     self.EnabledModules = {}
     self.AllModules = {}
     self.Panels = {}
-    self.ModuleSettings = {}  -- 记录每个模块的 setting 值 {moduleName = {settingName = value}}
-    -- V4 Arraylist replaces old ArrayList system
+    self.V4Arraylist = nil
+    self.V4ModuleUIs = {}
+    self.V4ArraylistFrame = nil
     self.NextPanelX = self.Config.StartX
     self.NextPanelY = self.Config.StartY
     self.PanelLoadQueue = {}
 
     self:_InitWatermark()
     self:_InitSearchBar()
-    -- V4 Arraylist initialized via ScreenGui
+    self:_InitV4Arraylist()
     self:_InitNotifications()
     self:_StartRenderLoop()
     self:_BindToggleKey()
@@ -673,7 +743,6 @@ function SolsticeUI:_StartRenderLoop()
         local currentTime = tick()
         local deltaTime = currentTime - lastTime
         lastTime = currentTime
-
         if deltaTime <= 0 or deltaTime > 1 then
             deltaTime = 1 / 60
         end
@@ -697,8 +766,8 @@ function SolsticeUI:_StartRenderLoop()
         end
 
         -- 更新 V4 Arraylist 视觉
-        if self.V4Arraylist and self.V4UpdateArraylist then
-            self:V4UpdateArraylist()
+        if self.V4Arraylist then
+            self:_V4UpdateArraylist()
         end
     end)
 end
@@ -1092,7 +1161,6 @@ function SolsticeUI:_CreateFeature(content, panelData, feat)
         Enabled = function() return enabled end,
         Toggle = doToggle,
     }
-    ui.ModuleSettings[feat.name] = {}
 
     if hasSettings then
         settingsContainer, setHeight = ui:_CreateSettings(modContainer, panelData, feat.settings, feat.name)
@@ -1222,11 +1290,6 @@ function SolsticeUI:_CreateToggleSetting(frame, s, moduleName)
         end)
 
         if s.callback then pcall(s.callback, val) end
-        ui.ModuleSettings[moduleName][s.name] = val
-        if ui.V4Arraylist then
-            local display = ui:_BuildSettingDisplay(moduleName)
-            ui.V4Arraylist:setModuleState(moduleName, display, ui:IsEnabled(moduleName))
-        end
     end)
 end
 
@@ -1333,13 +1396,8 @@ function SolsticeUI:_CreateSliderSetting(frame, s, moduleName)
         val = math.floor(val * 100) / 100
         valLbl.Text = string.format("%.2f", val)
         if s.callback then pcall(s.callback, val) end
-        ui.ModuleSettings[moduleName][s.name] = val
-        if ui.V4Arraylist then
-            local display = ui:_BuildSettingDisplay(moduleName)
-            ui.V4Arraylist:setModuleState(moduleName, display, ui:IsEnabled(moduleName))
-        end
-        if ui.V4Arraylist then
-            ui.V4Arraylist:setModuleState(moduleName, tostring(val), ui:IsEnabled(moduleName))
+        if ui.EnabledModules[moduleName] then
+            ui:_SetModuleState(moduleName, true, val)
         end
     end
 
@@ -1524,12 +1582,7 @@ function SolsticeUI:_CreateKeybindSetting(frame, s)
                 keyLbl.Text = newKey.Name
                 keyLbl.TextColor3 = PALETTE.SettingValue
                 Tween(keyBg, TweenInfo.new(0.2), {BackgroundColor3 = Color3.fromRGB(40, 40, 48)}):Play()
-                ui.ModuleSettings[moduleName][s.name] = newKey.Name
                 if s.callback then pcall(s.callback, newKey) end
-                if ui.V4Arraylist then
-                    local display = ui:_BuildSettingDisplay(moduleName)
-                    ui.V4Arraylist:setModuleState(moduleName, display, ui:IsEnabled(moduleName))
-                end
             end
         end)
     end)
@@ -1587,12 +1640,7 @@ function SolsticeUI:_CreateColorSetting(frame, s)
         end)
 
         box.MouseButton1Click:Connect(function()
-            ui.ModuleSettings[moduleName][s.name] = color
             if s.callback then pcall(s.callback, color) end
-            if ui.V4Arraylist then
-                local display = ui:_BuildSettingDisplay(moduleName)
-                ui.V4Arraylist:setModuleState(moduleName, display, ui:IsEnabled(moduleName))
-            end
         end)
     end
 end
@@ -1639,43 +1687,13 @@ function SolsticeUI:_CreateDropdownSetting(frame, s)
             end
             idx = idx % #s.options + 1
             valLbl.Text = s.options[idx]
-            ui.ModuleSettings[moduleName][s.name] = s.options[idx]
             if s.callback then pcall(s.callback, s.options[idx]) end
-            if ui.V4Arraylist then
-                local display = ui:_BuildSettingDisplay(moduleName)
-                ui.V4Arraylist:setModuleState(moduleName, display, ui:IsEnabled(moduleName))
-            end
         end
     end)
 end
 
-
--- ==================== V4 ARRAYLIST HELPERS ====================
-function SolsticeUI:_BuildSettingDisplay(moduleName)
-    local settings = self.ModuleSettings[moduleName]
-    if not settings then return "" end
-
-    local parts = {}
-    for name, value in pairs(settings) do
-        if value ~= nil and value ~= false and value ~= "" then
-            if typeof(value) == "boolean" then
-                if value then table.insert(parts, name) end
-            elseif typeof(value) == "number" then
-                table.insert(parts, name .. ": " .. string.format("%.1f", value))
-            elseif typeof(value) == "string" then
-                table.insert(parts, value)
-            else
-                table.insert(parts, tostring(value))
-            end
-        end
-    end
-
-    return table.concat(parts, " ")
-end
-
 -- ==================== PUBLIC API ====================
 function SolsticeUI:IsEnabled(name)
-    -- Check V4 Arraylist first
     if self.V4Arraylist then
         for _, mod in ipairs(self.V4Arraylist.mModules) do
             if mod.name == name then
@@ -1689,7 +1707,6 @@ end
 function SolsticeUI:ToggleModule(name)
     local mod = self.AllModules[name]
     if mod and mod.Toggle then mod.Toggle() end
-    -- Sync to V4 Arraylist
     if self.V4Arraylist then
         local v4mod = nil
         for _, m in ipairs(self.V4Arraylist.mModules) do
@@ -1720,7 +1737,6 @@ end
 function SolsticeUI:Destroy()
     if self.ClickGui then self.ClickGui:Destroy() end
     if self.HudGui then self.HudGui:Destroy() end
-    -- Clean up V4 Arraylist
     if self.V4ArraylistFrame and self.V4ArraylistFrame.Parent then
         self.V4ArraylistFrame.Parent:Destroy()
     end
@@ -1729,7 +1745,6 @@ function SolsticeUI:Destroy()
     self.EnabledModules = {}
     self.AllModules = {}
     self.Panels = {}
-    self.ModuleSettings = {}  -- 记录每个模块的 setting 值 {moduleName = {settingName = value}}
     self.ArrayListItems = {}
 end
 
@@ -1741,14 +1756,12 @@ function SolsticeUI:_InitV4Arraylist()
     self.V4Arraylist = al
     self.V4ModuleUIs = {}
 
-    -- 创建 ScreenGui
     local screenGui = Instance.new("ScreenGui")
     screenGui.Name = "SolsticeV4_Arraylist"
     screenGui.ResetOnSpawn = false
     screenGui.ZIndexBehavior = Enum.ZIndexBehavior.Global
     screenGui.Parent = self.HudGui.Parent
 
-    -- Arraylist 容器
     local arraylistFrame = Instance.new("Frame")
     arraylistFrame.Name = "Arraylist"
     arraylistFrame.BackgroundTransparency = 1
@@ -1765,8 +1778,7 @@ function SolsticeUI:_InitV4Arraylist()
 
     self.V4ArraylistFrame = arraylistFrame
 
-    -- 创建模块UI
-    local function createModuleUI(modName, parentFrame)
+    function self:_V4CreateModuleUI(modName, parentFrame)
         local container = Instance.new("Frame")
         container.Name = modName .. "_Container"
         container.BackgroundColor3 = Color3.fromRGB(20, 20, 20)
@@ -1828,10 +1840,10 @@ function SolsticeUI:_InitV4Arraylist()
         }
     end
 
-    -- updateArraylist 绑定到 self
-    function self:V4UpdateArraylist()
+    function self:_V4UpdateArraylist()
+        local al = self.V4Arraylist
         local allModules = {}
-        for _, mod in ipairs(self.V4Arraylist.mModules) do
+        for _, mod in ipairs(al.mModules) do
             if mod.visibleInArrayList then
                 table.insert(allModules, mod)
             end
@@ -1871,7 +1883,7 @@ function SolsticeUI:_InitV4Arraylist()
             end
 
             if not ui then
-                ui = createModuleUI(mod.name, self.V4ArraylistFrame)
+                ui = self:_V4CreateModuleUI(mod.name, self.V4ArraylistFrame)
                 self.V4ModuleUIs[mod.name] = ui
             end
 
@@ -1897,19 +1909,10 @@ function SolsticeUI:_InitV4Arraylist()
             renderIndex = renderIndex + 1
 
             local displayText = mod.name
-            local settingDisplay = mod.settingDisplay
-            -- 如果 v6 有更新的 setting 值，使用 v6 的值
-            if self.ModuleSettings and self.ModuleSettings[mod.name] then
-                local v6Display = self:_BuildSettingDisplay(mod.name)
-                if v6Display ~= "" then
-                    settingDisplay = v6Display
-                end
-            end
-            if settingDisplay ~= "" then
-                displayText = displayText .. " " .. settingDisplay
+            if mod.settingDisplay ~= "" then
+                displayText = displayText .. " " .. mod.settingDisplay
             end
 
-            local al = self.V4Arraylist
             local color = ColorUtils.getThemedColor(renderIndex * 100)
 
             local displayColor = color
