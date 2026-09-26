@@ -1,6 +1,7 @@
 -- ============================================================
--- SolsticeUI v6.0 - Animation & Polish Overhaul
+-- SolsticeUI v6.1 - Animation & Polish Overhaul
 -- Optimized click feedback, smooth toggles, spring physics
+-- ArrayList replaced with themed Glow/Outline/Bar/Split arraylist
 -- ============================================================
 
 local Players = game:GetService("Players")
@@ -132,11 +133,18 @@ local DEFAULT_CONFIG = {
     StartX = 20,
     StartY = 45,
 
-    ArrayListFont = Enum.Font.SourceSansBold,
-    ArrayListTextSize = 14,
-    ArrayListItemHeight = 16,
-    ArrayListRainbowSpeed = 0.35,
-    ArrayListAnimSpeed = 0.3,
+    ArrayListFont = Enum.Font.GothamBold,
+    ArrayListTextSize = 15,
+    ArrayListDisplay = "Split",        -- "Outline" | "Bar" | "Split" | "None"
+    ArrayListGlow = true,
+    ArrayListGlowStrength = 1.9,
+    ArrayListGlowDensity = 2,
+    ArrayListTextShadow = true,
+    ArrayListShadowOffset = 1.0,
+    ArrayListTopOffset = 10,
+    ArrayListRightOffset = 30,
+    ArrayListAnimSpeed = 14,           -- lerp speed for in/out animation
+    ArrayListTheme = nil,              -- defaults to pink/blue/white theme
 
     UseCustomFont = true,
     CustomFontName = "SFDisplay",
@@ -158,19 +166,26 @@ local DEFAULT_CONFIG = {
 }
 
 -- ==================== UTILITIES ====================
-local function HSVtoRGB(h, s, v)
-    local r, g, b
-    local i = math.floor(h * 6)
-    local f = h * 6 - i
-    local p, q, t = v*(1-s), v*(1-f*s), v*(1-(1-f)*s)
-    i = i % 6
-    if i == 0 then r,g,b = v,t,p
-    elseif i == 1 then r,g,b = q,v,p
-    elseif i == 2 then r,g,b = p,v,t
-    elseif i == 3 then r,g,b = p,q,v
-    elseif i == 4 then r,g,b = t,p,v
-    elseif i == 5 then r,g,b = v,p,q end
-    return Color3.new(r, g, b)
+local ARRAYLIST_THEME = {
+    Color3.fromRGB(233, 168, 188),  -- #E9A8BC light pink
+    Color3.fromRGB(110, 200, 241),  -- #6EC8F1 light blue
+    Color3.new(1, 1, 1),            -- white
+}
+
+local function LerpColors(seconds, index, colors)
+    if #colors == 0 then return Color3.new(1, 1, 1) end
+    local time = 10000 / seconds
+    local angle = (tick() * 1000 + index) % time
+    local segmentTime = time / #colors
+    local segmentIndex = math.floor(angle / segmentTime)
+    local segmentIndexFloat = angle / segmentTime - segmentIndex
+    local startColor = colors[segmentIndex + 1]
+    local endColor = colors[(segmentIndex + 1) % #colors + 1]
+    return startColor:Lerp(endColor, segmentIndexFloat)
+end
+
+local function GetThemedColor(index, theme)
+    return LerpColors(3.0, index, theme or ARRAYLIST_THEME)
 end
 
 local function Corner(parent, r)
@@ -271,7 +286,6 @@ function SolsticeUI.new(userConfig)
     self.AllModules = {}
     self.Panels = {}
     self.ArrayListItems = {}
-    self.RainbowOffset = 0
     self.NextPanelX = self.Config.StartX
     self.NextPanelY = self.Config.StartY
     self.PanelLoadQueue = {}
@@ -457,7 +471,8 @@ function SolsticeUI:_InitArrayList()
     self.ArrayListMaster = Instance.new("Frame")
     self.ArrayListMaster.Name = "ArrayListMaster"
     self.ArrayListMaster.AnchorPoint = Vector2.new(1, 0)
-    self.ArrayListMaster.Position = UDim2.new(1, -8, 0, 6)
+    self.ArrayListMaster.Position = UDim2.new(1, -self.Config.ArrayListRightOffset, 0, self.Config.ArrayListTopOffset)
+    self.ArrayListMaster.Size = UDim2.new(0, 400, 1, -self.Config.ArrayListTopOffset - 10)
     self.ArrayListMaster.BackgroundTransparency = 1
     self.ArrayListMaster.Parent = self.HudGui
 
@@ -469,8 +484,66 @@ function SolsticeUI:_InitArrayList()
     local layout = Instance.new("UIListLayout")
     layout.SortOrder = Enum.SortOrder.LayoutOrder
     layout.HorizontalAlignment = Enum.HorizontalAlignment.Right
-    layout.Padding = UDim.new(0, 1)
+    layout.VerticalAlignment = Enum.VerticalAlignment.Top
+    layout.Padding = UDim.new(0, 2)
     layout.Parent = self.ArrayListContent
+end
+
+function SolsticeUI:_CreateArrayListItem(modName)
+    local container = Instance.new("Frame")
+    container.Name = modName .. "_AL"
+    container.BackgroundColor3 = PALETTE.ArrayListBg
+    container.BorderSizePixel = 0
+    container.ClipsDescendants = true
+    container.Parent = self.ArrayListContent
+    Corner(container, UDim.new(0, 4))
+
+    local outline = Instance.new("UIStroke")
+    outline.Name = "Outline"
+    outline.Thickness = 1
+    outline.Transparency = 1
+    outline.Parent = container
+
+    local glow = Instance.new("UIStroke")
+    glow.Name = "Glow"
+    glow.Thickness = 2
+    glow.Transparency = 1
+    glow.Parent = container
+
+    local label = Instance.new("TextLabel")
+    label.Name = "Text"
+    label.BackgroundTransparency = 1
+    label.Size = UDim2.new(1, -16, 1, 0)
+    label.Position = UDim2.new(0, 8, 0, 0)
+    label.Font = self.Config.ArrayListFont
+    label.TextXAlignment = Enum.TextXAlignment.Right
+    label.TextYAlignment = Enum.TextYAlignment.Center
+    label.Parent = container
+    if self.Config.UseCustomFont then FontLoader.setFont(self.Config.CustomFontName, label) end
+
+    local bar = Instance.new("Frame")
+    bar.Name = "Bar"
+    bar.BackgroundTransparency = 0
+    bar.Size = UDim2.new(0, 3, 1, -4)
+    bar.Position = UDim2.new(1, -6, 0, 2)
+    bar.Parent = container
+    Corner(bar, UDim.new(1, 0))
+
+    local padding = Instance.new("UIPadding")
+    padding.PaddingLeft = UDim.new(0, 10)
+    padding.PaddingRight = UDim.new(0, 10)
+    padding.Parent = container
+
+    local item = {
+        container = container,
+        bar = bar,
+        outline = outline,
+        glow = glow,
+        label = label,
+        anim = 0,
+    }
+    self.ArrayListItems[modName] = item
+    return item
 end
 
 function SolsticeUI:_UpdateArrayList()
@@ -479,6 +552,10 @@ function SolsticeUI:_UpdateArrayList()
         return
     end
 
+    local cfg = self.Config
+    local theme = cfg.ArrayListTheme or ARRAYLIST_THEME
+
+    -- collect all enabled modules
     local enabled = {}
     for name, data in pairs(self.EnabledModules) do
         if data.state then
@@ -490,136 +567,79 @@ function SolsticeUI:_UpdateArrayList()
         end
     end
 
-    if #enabled == 0 then
-        self.ArrayListMaster.Visible = false
-        return
-    end
+    self.ArrayListMaster.Visible = #enabled > 0
 
-    self.ArrayListMaster.Visible = true
-
+    -- sort by display length (longest on top)
     table.sort(enabled, function(a, b)
-        return GetTextWidth(a.display, self.Config.ArrayListFont, self.Config.ArrayListTextSize) >
-               GetTextWidth(b.display, self.Config.ArrayListFont, self.Config.ArrayListTextSize)
+        return #a.display > #b.display
     end)
 
-    local activeNames = {}
-    for _, data in ipairs(enabled) do
-        activeNames[data.name] = true
-    end
-
-    for name, itemFrame in pairs(self.ArrayListItems) do
-        if not activeNames[name] and itemFrame.Visible then
-            itemFrame.Visible = false
-            local bg = itemFrame:FindFirstChild("BgBar")
-            local txt = itemFrame:FindFirstChild("TextLabel")
-            if bg and txt then
-                local tw = GetTextWidth(txt.Text, self.Config.ArrayListFont, self.Config.ArrayListTextSize) + 10
-                Tween(bg, TweenInfo.new(self.Config.ArrayListAnimSpeed, Enum.EasingStyle.Back, Enum.EasingDirection.In), {
-                    Position = UDim2.new(0, tw + 50, 0, 0),
-                    BackgroundTransparency = 1
-                }):Play()
-                Tween(txt, TweenInfo.new(self.Config.ArrayListAnimSpeed * 0.8, Enum.EasingStyle.Quad, Enum.EasingDirection.In), {
-                    Position = UDim2.new(0, tw + 30, 0, 0),
-                    TextTransparency = 1
-                }):Play()
-            end
-            task.delay(self.Config.ArrayListAnimSpeed + 0.1, function()
-                if itemFrame and itemFrame.Parent then
-                    itemFrame.Visible = false
-                end
-            end)
-        end
-    end
-
-    local maxW = 0
+    local usedNames = {}
     for i, data in ipairs(enabled) do
-        local itemFrame = self.ArrayListItems[data.name]
-        local isNew = false
+        usedNames[data.name] = true
 
-        if not itemFrame then
-            isNew = true
-            itemFrame = Instance.new("Frame")
-            itemFrame.Name = data.name .. "_AL"
-            itemFrame.BackgroundTransparency = 1
-            itemFrame.ClipsDescendants = false
-            itemFrame.Parent = self.ArrayListContent
-
-            local bgBar = Instance.new("Frame")
-            bgBar.Name = "BgBar"
-            bgBar.Size = UDim2.new(0, 0, 1, 0)
-            bgBar.Position = UDim2.new(0, 0, 0, 0)
-            bgBar.BackgroundColor3 = PALETTE.ArrayListBg
-            bgBar.BackgroundTransparency = 1
-            bgBar.BorderSizePixel = 0
-            bgBar.ZIndex = 1
-            bgBar.Parent = itemFrame
-
-            local txt = Instance.new("TextLabel")
-            txt.Name = "TextLabel"
-            txt.Size = UDim2.new(0, 0, 1, 0)
-            txt.Position = UDim2.new(0, 0, 0, 0)
-            txt.BackgroundTransparency = 1
-            txt.Font = self.Config.ArrayListFont
-            txt.TextSize = self.Config.ArrayListTextSize
-            txt.TextXAlignment = Enum.TextXAlignment.Right
-            txt.TextTransparency = 1
-            txt.ZIndex = 2
-            txt.Parent = itemFrame
-            if self.Config.UseCustomFont then FontLoader.setFont(self.Config.CustomFontName, txt) end
-
-            self.ArrayListItems[data.name] = itemFrame
+        local item = self.ArrayListItems[data.name]
+        if not item then
+            item = self:_CreateArrayListItem(data.name)
         end
 
-        itemFrame.Visible = true
-        itemFrame.LayoutOrder = i
+        local color = GetThemedColor(i * 100, theme)
+        local anim = item.anim
 
-        local txt = itemFrame:FindFirstChild("TextLabel")
-        local bgBar = itemFrame:FindFirstChild("BgBar")
+        item.container.Size = UDim2.new(0, 0, 0, math.max(0, (cfg.ArrayListTextSize + 8) * anim))
+        item.container.AutomaticSize = anim > 0.01 and Enum.AutomaticSize.X or Enum.AutomaticSize.None
+        item.container.BackgroundTransparency = 1 - (0.7 * anim)
+        item.container.Visible = anim > 0.01
+        item.container.LayoutOrder = i
 
-        if txt then
-            txt.Text = data.display
-        end
+        item.label.Text = data.display
+        item.label.TextSize = cfg.ArrayListTextSize
+        item.label.TextColor3 = color
 
-        local tw = GetTextWidth(data.display, self.Config.ArrayListFont, self.Config.ArrayListTextSize) + 10
-        if tw > maxW then maxW = tw end
-
-        itemFrame.Size = UDim2.new(0, tw, 0, self.Config.ArrayListItemHeight)
-
-        if txt then
-            txt.Size = UDim2.new(0, tw, 1, 0)
-        end
-        if bgBar then
-            bgBar.Size = UDim2.new(0, tw, 1, 0)
-        end
-
-        if isNew then
-            if bgBar then
-                bgBar.Position = UDim2.new(0, tw + 50, 0, 0)
-                Tween(bgBar, TweenInfo.new(self.Config.ArrayListAnimSpeed, Enum.EasingStyle.Back, Enum.EasingDirection.Out), {
-                    Position = UDim2.new(0, 0, 0, 0),
-                    BackgroundTransparency = PALETTE.ArrayListBgTransparency
-                }):Play()
-            end
-            if txt then
-                txt.Position = UDim2.new(0, tw + 30, 0, 0)
-                Tween(txt, TweenInfo.new(self.Config.ArrayListAnimSpeed * 0.9, Enum.EasingStyle.Back, Enum.EasingDirection.Out), {
-                    Position = UDim2.new(0, 0, 0, 0),
-                    TextTransparency = 0
-                }):Play()
-            end
+        if cfg.ArrayListTextShadow then
+            item.label.TextStrokeTransparency = math.clamp(0.5 - (cfg.ArrayListShadowOffset * 0.15), 0, 1)
+            item.label.TextStrokeColor3 = Color3.new(0, 0, 0)
         else
-            if bgBar then
-                bgBar.Position = UDim2.new(0, 0, 0, 0)
-                bgBar.BackgroundTransparency = PALETTE.ArrayListBgTransparency
-            end
-            if txt then
-                txt.Position = UDim2.new(0, 0, 0, 0)
-                txt.TextTransparency = 0
-            end
+            item.label.TextStrokeTransparency = 1
+        end
+
+        item.bar.BackgroundColor3 = color
+
+        local mode = cfg.ArrayListDisplay
+        if mode == "None" then
+            item.bar.Visible = false
+            item.outline.Transparency = 1
+            item.glow.Transparency = 1
+        elseif mode == "Bar" then
+            item.bar.Visible = true
+            item.outline.Transparency = 1
+            item.glow.Transparency = 1
+        elseif mode == "Outline" then
+            item.bar.Visible = false
+            item.outline.Transparency = 1 - (0.6 * anim)
+            item.outline.Color = color
+            local glowAlpha = cfg.ArrayListGlow and (0.5 * anim * (cfg.ArrayListGlowDensity / 5)) or 0
+            item.glow.Transparency = 1 - glowAlpha
+            item.glow.Color = color
+            item.glow.Thickness = cfg.ArrayListGlowStrength
+        else -- Split
+            item.bar.Visible = true
+            item.outline.Transparency = 1 - (0.4 * anim)
+            item.outline.Color = color
+            local glowAlpha = cfg.ArrayListGlow and (0.4 * anim * (cfg.ArrayListGlowDensity / 5)) or 0
+            item.glow.Transparency = 1 - glowAlpha
+            item.glow.Color = color
+            item.glow.Thickness = cfg.ArrayListGlowStrength
         end
     end
 
-    self.ArrayListMaster.Size = UDim2.new(0, maxW, 0, #enabled * (self.Config.ArrayListItemHeight + 1))
+    -- hide items whose fade-out animation has finished
+    for name, item in pairs(self.ArrayListItems) do
+        if not usedNames[name] and item.anim <= 0.01 then
+            item.container.Visible = false
+            item.container.Size = UDim2.new(0, 0, 0, 0)
+        end
+    end
 end
 
 function SolsticeUI:_SetModuleState(name, state, value)
@@ -717,18 +737,24 @@ end
 
 -- ==================== RENDER LOOP ====================
 function SolsticeUI:_StartRenderLoop()
-    RunService.RenderStepped:Connect(function(dt)
+    local lastTime = tick()
+    RunService.RenderStepped:Connect(function()
+        local currentTime = tick()
+        local dt = currentTime - lastTime
+        lastTime = currentTime
+        if dt <= 0 or dt > 1 then dt = 1 / 60 end
+
         if self.ARRAYLIST_ENABLED then
-            self.RainbowOffset = (self.RainbowOffset + dt * self.Config.ArrayListRainbowSpeed) % 1
-            for name, itemFrame in pairs(self.ArrayListItems) do
-                if itemFrame.Visible then
-                    local txt = itemFrame:FindFirstChild("TextLabel")
-                    if txt then
-                        local hue = (self.RainbowOffset + (itemFrame.LayoutOrder - 1) * 0.055) % 1
-                        txt.TextColor3 = HSVtoRGB(hue, 0.78, 1)
-                    end
-                end
+            -- lerp each module's in/out animation
+            for name, item in pairs(self.ArrayListItems) do
+                local target = (self.EnabledModules[name] and self.EnabledModules[name].state) and 1.0 or 0.0
+                item.anim = item.anim + (target - item.anim) * dt * self.Config.ArrayListAnimSpeed
+                item.anim = math.clamp(item.anim, 0.0, 1.0)
             end
+            -- refresh visuals (themed colors are time-based)
+            self:_UpdateArrayList()
+        elseif self.ArrayListMaster then
+            self.ArrayListMaster.Visible = false
         end
     end)
 end
@@ -1660,6 +1686,50 @@ end
 
 function SolsticeUI:SetValue(name, value)
     self:_SetModuleState(name, self:IsEnabled(name), value)
+end
+
+-- ==================== ARRAYLIST API ====================
+function SolsticeUI:SetArrayListDisplay(mode)
+    -- mode: "Outline" | "Bar" | "Split" | "None"
+    self.Config.ArrayListDisplay = mode
+end
+
+function SolsticeUI:SetArrayListGlow(enabled)
+    self.Config.ArrayListGlow = enabled
+end
+
+function SolsticeUI:SetArrayListGlowDensity(density)
+    self.Config.ArrayListGlowDensity = density
+end
+
+function SolsticeUI:SetArrayListGlowStrength(strength)
+    self.Config.ArrayListGlowStrength = strength
+end
+
+function SolsticeUI:SetArrayListTextShadow(enabled)
+    self.Config.ArrayListTextShadow = enabled
+end
+
+function SolsticeUI:SetArrayListShadowOffset(offset)
+    self.Config.ArrayListShadowOffset = offset
+end
+
+function SolsticeUI:SetArrayListFontSize(size)
+    self.Config.ArrayListTextSize = size
+end
+
+function SolsticeUI:SetArrayListOffset(right, top)
+    if right then self.Config.ArrayListRightOffset = right end
+    if top then self.Config.ArrayListTopOffset = top end
+    if self.ArrayListMaster then
+        self.ArrayListMaster.Position = UDim2.new(1, -self.Config.ArrayListRightOffset, 0, self.Config.ArrayListTopOffset)
+        self.ArrayListMaster.Size = UDim2.new(0, 400, 1, -self.Config.ArrayListTopOffset - 10)
+    end
+end
+
+function SolsticeUI:SetArrayListTheme(colors)
+    -- colors: array of Color3 cycled across the list, e.g. {Color3.fromRGB(233,168,188), Color3.fromRGB(110,200,241), Color3.new(1,1,1)}
+    self.Config.ArrayListTheme = colors
 end
 
 function SolsticeUI:Destroy()
