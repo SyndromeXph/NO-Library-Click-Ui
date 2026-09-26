@@ -1,8 +1,7 @@
 -- ============================================================
--- SolsticeUI v6.3 - Animation & Polish Overhaul
+-- SolsticeUI v6.2 - Animation & Polish Overhaul
 -- Optimized click feedback, smooth toggles, spring physics
 -- ArrayList: themed Glow/Outline/Bar/Split, enable-order sorting, exit animation
--- v6.3: silky drag, GUI fade toggle, focus/hover FX, notif progress bar, color setting removed
 -- ============================================================
 
 local Players = game:GetService("Players")
@@ -109,8 +108,6 @@ local ANIM = {
     Expand = TweenInfo.new(0.25, Enum.EasingStyle.Quad, Enum.EasingDirection.Out),
     SpringExpand = TweenInfo.new(0.3, Enum.EasingStyle.Back, Enum.EasingDirection.Out),
     Hover = TweenInfo.new(0.12, Enum.EasingStyle.Quad, Enum.EasingDirection.Out),
-    Soft = TweenInfo.new(0.22, Enum.EasingStyle.Sine, Enum.EasingDirection.Out),
-    FadeFast = TweenInfo.new(0.15, Enum.EasingStyle.Quad, Enum.EasingDirection.Out),
     Slide = TweenInfo.new(0.15, Enum.EasingStyle.Quad, Enum.EasingDirection.Out),
     NotifyIn = TweenInfo.new(0.4, Enum.EasingStyle.Back, Enum.EasingDirection.Out),
     NotifyOut = TweenInfo.new(0.3, Enum.EasingStyle.Quad, Enum.EasingDirection.In),
@@ -212,7 +209,6 @@ end
 local function MakeDraggable(frame, handle)
     handle = handle or frame
     local drag, dragStart, startPos, dragTouch
-    local targetPos = nil
 
     handle.InputBegan:Connect(function(input)
         if input.UserInputType == Enum.UserInputType.MouseButton1
@@ -221,7 +217,6 @@ local function MakeDraggable(frame, handle)
             dragTouch = input.UserInputType == Enum.UserInputType.Touch and input or nil
             dragStart = input.Position
             startPos = frame.Position
-            targetPos = startPos
         end
     end)
 
@@ -233,21 +228,8 @@ local function MakeDraggable(frame, handle)
             return
         end
         local delta = input.Position - dragStart
-        targetPos = UDim2.new(startPos.X.Scale, startPos.X.Offset + delta.X,
-                              startPos.Y.Scale, startPos.Y.Offset + delta.Y)
-    end)
-
-    -- smooth lerp towards the drag target (silky dragging)
-    RunService.RenderStepped:Connect(function(dt)
-        if not drag or not targetPos or not frame.Parent then return end
-        local cur = frame.Position
-        local a = math.clamp(dt * 20, 0, 1)
-        frame.Position = UDim2.new(
-            cur.X.Scale + (targetPos.X.Scale - cur.X.Scale) * a,
-            cur.X.Offset + (targetPos.X.Offset - cur.X.Offset) * a,
-            cur.Y.Scale + (targetPos.Y.Scale - cur.Y.Scale) * a,
-            cur.Y.Offset + (targetPos.Y.Offset - cur.Y.Offset) * a
-        )
+        frame.Position = UDim2.new(startPos.X.Scale, startPos.X.Offset + delta.X,
+                                    startPos.Y.Scale, startPos.Y.Offset + delta.Y)
     end)
 
     UserInputService.InputEnded:Connect(function(input)
@@ -464,17 +446,6 @@ function SolsticeUI:_InitSearchBar()
     self.SearchBox = box
     box:GetPropertyChangedSignal("Text"):Connect(function()
         self:_FilterModules(box.Text)
-    end)
-
-    box.Focused:Connect(function()
-        Tween(stroke, ANIM.Hover, {Color = PALETTE.ActiveGradientStart, Transparency = 0.1}):Play()
-        Tween(icon, ANIM.Hover, {TextColor3 = PALETTE.ActiveGradientStart}):Play()
-        Tween(frame, ANIM.Soft, {BackgroundTransparency = 0.02}):Play()
-    end)
-    box.FocusLost:Connect(function()
-        Tween(stroke, ANIM.Hover, {Color = PALETTE.PanelBorder, Transparency = 0.45}):Play()
-        Tween(icon, ANIM.Hover, {TextColor3 = PALETTE.Muted}):Play()
-        Tween(frame, ANIM.Soft, {BackgroundTransparency = 0.06}):Play()
     end)
 end
 
@@ -770,21 +741,6 @@ function SolsticeUI:Notify(text, dur)
     gradLine.BorderSizePixel = 0
     gradLine.Parent = card
 
-    local progress = Instance.new("Frame")
-    progress.Name = "Progress"
-    progress.Size = UDim2.new(1, 0, 0, 2)
-    progress.Position = UDim2.new(0, 0, 1, -2)
-    progress.BackgroundColor3 = PALETTE.ActiveGradientEnd
-    progress.BorderSizePixel = 0
-    progress.Parent = card
-
-    local progressGrad = Instance.new("UIGradient")
-    progressGrad.Color = ColorSequence.new({
-        ColorSequenceKeypoint.new(0, PALETTE.ActiveGradientStart),
-        ColorSequenceKeypoint.new(1, PALETTE.ActiveGradientEnd)
-    })
-    progressGrad.Parent = progress
-
     local lbl = Instance.new("TextLabel")
     lbl.Size = UDim2.new(1, -10, 1, -2)
     lbl.Position = UDim2.new(0, 5, 0, 2)
@@ -797,16 +753,8 @@ function SolsticeUI:Notify(text, dur)
     lbl.Parent = card
     if self.Config.UseCustomFont then FontLoader.setFont(self.Config.CustomFontName, lbl) end
 
-    lbl.TextTransparency = 1
-    Tween(lbl, ANIM.Soft, {TextTransparency = 0}):Play()
-
     Tween(card, ANIM.NotifyIn, {
         Position = UDim2.new(0, 0, 0, 0)
-    }):Play()
-
-    -- remaining-time progress bar
-    Tween(progress, TweenInfo.new(dur, Enum.EasingStyle.Linear), {
-        Size = UDim2.new(0, 0, 0, 2)
     }):Play()
 
     task.delay(dur, function()
@@ -818,8 +766,6 @@ function SolsticeUI:Notify(text, dur)
             fadeOut:Play()
             Tween(stroke, TweenInfo.new(0.3), {Transparency = 1}):Play()
             Tween(lbl, TweenInfo.new(0.2), {TextTransparency = 1}):Play()
-            Tween(progress, TweenInfo.new(0.2), {BackgroundTransparency = 1}):Play()
-            Tween(gradLine, TweenInfo.new(0.2), {BackgroundTransparency = 1}):Play()
             fadeOut.Completed:Connect(function()
                 holder:Destroy()
             end)
@@ -864,63 +810,9 @@ function SolsticeUI:_BindToggleKey()
         if gameProcessed then return end
         if input.KeyCode == Enum.KeyCode.RightShift then
             self.GUI_ENABLED = not self.GUI_ENABLED
-            self:_FadeClickGui(self.GUI_ENABLED)
+            self.ClickGui.Enabled = self.GUI_ENABLED
         end
     end)
-end
-
--- smooth fade in/out for the whole click GUI
-function SolsticeUI:_FadeClickGui(show)
-    local gui = self.ClickGui
-    if not gui then return end
-
-    if not self._guiOriginalTrans then self._guiOriginalTrans = {} end
-
-    if show then
-        gui.Enabled = true
-    else
-        -- capture current (visible) transparency values before fading out
-        for _, obj in ipairs(gui:GetDescendants()) do
-            local rec = self._guiOriginalTrans[obj] or {}
-            if obj:IsA("GuiObject") then
-                rec.bg = obj.BackgroundTransparency
-            end
-            if obj:IsA("TextLabel") or obj:IsA("TextButton") or obj:IsA("TextBox") then
-                rec.text = obj.TextTransparency
-                rec.tstroke = obj.TextStrokeTransparency
-            end
-            if obj:IsA("UIStroke") then
-                rec.ustroke = obj.Transparency
-            end
-            self._guiOriginalTrans[obj] = rec
-        end
-    end
-
-    local info = show and ANIM.Soft or ANIM.FadeFast
-    for obj, rec in pairs(self._guiOriginalTrans) do
-        if obj.Parent then
-            if rec.bg then
-                Tween(obj, info, {BackgroundTransparency = show and rec.bg or 1}):Play()
-            end
-            if rec.text then
-                Tween(obj, info, {TextTransparency = show and rec.text or 1}):Play()
-            end
-            if rec.tstroke then
-                Tween(obj, info, {TextStrokeTransparency = show and rec.tstroke or 1}):Play()
-            end
-            if rec.ustroke then
-                Tween(obj, info, {Transparency = show and rec.ustroke or 1}):Play()
-            end
-        end
-    end
-
-    if not show then
-        task.delay(0.2, function()
-            if not self.GUI_ENABLED and gui then
-                gui.Enabled = false
-            end
-        end)
-    end
 end
 
 -- ==================== CREATE CATEGORY ====================
@@ -989,18 +881,6 @@ function SolsticeUI:CreateCategory(name, iconChar, position, features)
     title.Parent = header
     if self.Config.UseCustomFont then FontLoader.setFont(self.Config.CustomFontName, title) end
 
-    local arrow = Instance.new("TextLabel")
-    arrow.Name = "Arrow"
-    arrow.Size = UDim2.new(0, 14, 1, 0)
-    arrow.Position = UDim2.new(1, -18, 0, 0)
-    arrow.BackgroundTransparency = 1
-    arrow.Text = "▾"
-    arrow.TextColor3 = PALETTE.Muted
-    arrow.Font = self.Config.Font
-    arrow.TextSize = 10
-    arrow.TextXAlignment = Enum.TextXAlignment.Center
-    arrow.Parent = header
-
     local content = Instance.new("Frame")
     content.Name = "Content"
     content.Size = UDim2.new(1, 0, 1, -self.Config.PanelHeaderHeight)
@@ -1024,25 +904,9 @@ function SolsticeUI:CreateCategory(name, iconChar, position, features)
     function panelData:ToggleCollapse()
         self.Collapsed = not self.Collapsed
         self:UpdateHeight()
-        Tween(arrow, ANIM.Soft, {
-            Rotation = self.Collapsed and -90 or 0,
-            TextColor3 = self.Collapsed and PALETTE.Muted or PALETTE.HeaderText
-        }):Play()
     end
 
     header.MouseButton1Click:Connect(function() panelData:ToggleCollapse() end)
-
-    header.MouseEnter:Connect(function()
-        Tween(stroke, ANIM.Hover, {Transparency = 0.12}):Play()
-        Tween(header, ANIM.Hover, {BackgroundTransparency = 0.04}):Play()
-        Tween(iconLbl, ANIM.Hover, {TextColor3 = PALETTE.HeaderText}):Play()
-    end)
-    header.MouseLeave:Connect(function()
-        Tween(stroke, ANIM.Hover, {Transparency = 0.4}):Play()
-        Tween(header, ANIM.Hover, {BackgroundTransparency = 0.12}):Play()
-        Tween(iconLbl, ANIM.Hover, {TextColor3 = PALETTE.HeaderIcon}):Play()
-    end)
-
     MakeDraggable(panel, header)
 
     for i, feat in ipairs(features or {}) do
@@ -1096,24 +960,9 @@ function SolsticeUI:_CreateFeature(content, panelData, feat)
         ColorSequenceKeypoint.new(0, PALETTE.ActiveGradientStart),
         ColorSequenceKeypoint.new(1, PALETTE.ActiveGradientEnd)
     })
-    activeGrad.Rotation = 90  -- static vertical gradient: identical on every enabled button, no corner banding
+    activeGrad.Rotation = 0
     activeGrad.Enabled = false
     activeGrad.Parent = btn
-
-    local activeStroke = Instance.new("UIStroke")
-    activeStroke.Color = PALETTE.PressGlow
-    activeStroke.Thickness = 1
-    activeStroke.Transparency = 1
-    activeStroke.Parent = btn
-
-    local topLight = Instance.new("Frame")
-    topLight.Name = "TopHighlight"
-    topLight.Size = UDim2.new(1, -6, 0, 1)
-    topLight.Position = UDim2.new(0, 3, 0, 1)
-    topLight.BackgroundColor3 = Color3.fromRGB(255, 255, 255)
-    topLight.BackgroundTransparency = 1
-    topLight.BorderSizePixel = 0
-    topLight.Parent = btn
 
     local glowFrame = Instance.new("Frame")
     glowFrame.Name = "Glow"
@@ -1154,8 +1003,6 @@ function SolsticeUI:_CreateFeature(content, panelData, feat)
             btn.BackgroundTransparency = 0
             btn.TextColor3 = PALETTE.ActiveText
             activeGrad.Enabled = true
-            activeStroke.Transparency = 0.35
-            topLight.BackgroundTransparency = 0.8
             ui:_SetModuleState(feat.name, true, ui.SavedConfig.modules[feat.name].value)
             if feat.callback then pcall(feat.callback, true) end
         end
@@ -1165,8 +1012,7 @@ function SolsticeUI:_CreateFeature(content, panelData, feat)
         if not enabled then
             Tween(btn, ANIM.Hover, {
                 BackgroundColor3 = PALETTE.ItemHoverBg,
-                BackgroundTransparency = 0.15,
-                TextColor3 = PALETTE.White
+                BackgroundTransparency = 0.15
             }):Play()
         end
     end)
@@ -1174,8 +1020,7 @@ function SolsticeUI:_CreateFeature(content, panelData, feat)
         if not enabled then
             Tween(btn, ANIM.Hover, {
                 BackgroundColor3 = PALETTE.ItemBg,
-                BackgroundTransparency = PALETTE.ItemBgTransparency,
-                TextColor3 = PALETTE.ItemText
+                BackgroundTransparency = PALETTE.ItemBgTransparency
             }):Play()
         end
     end)
@@ -1191,13 +1036,15 @@ function SolsticeUI:_CreateFeature(content, panelData, feat)
                 TextColor3 = PALETTE.ActiveText
             }):Play()
             activeGrad.Enabled = true
-            Tween(activeStroke, ANIM.Standard, {Transparency = 0.35}):Play()
-            Tween(topLight, ANIM.Standard, {BackgroundTransparency = 0.8}):Play()
 
-            Tween(glowFrame, TweenInfo.new(0.12), {BackgroundTransparency = 0.55}):Play()
-            task.delay(0.12, function()
+            Tween(btn, TweenInfo.new(0.1, Enum.EasingStyle.Quad, Enum.EasingDirection.Out), {
+                Size = UDim2.new(1, 0, 0, ui.Config.ItemHeight + 1)
+            }):Play()
+            task.delay(0.1, function()
                 if enabled then
-                    Tween(glowFrame, TweenInfo.new(0.3), {BackgroundTransparency = 1}):Play()
+                    Tween(btn, TweenInfo.new(0.12, Enum.EasingStyle.Back, Enum.EasingDirection.Out), {
+                        Size = UDim2.new(1, 0, 0, ui.Config.ItemHeight)
+                    }):Play()
                 end
             end)
         else
@@ -1206,8 +1053,6 @@ function SolsticeUI:_CreateFeature(content, panelData, feat)
                 BackgroundTransparency = PALETTE.ItemBgTransparency,
                 TextColor3 = PALETTE.ItemText
             }):Play()
-            Tween(activeStroke, ANIM.Standard, {Transparency = 1}):Play()
-            Tween(topLight, ANIM.Standard, {BackgroundTransparency = 1}):Play()
             task.delay(0.15, function()
                 if not enabled then activeGrad.Enabled = false end
             end)
@@ -1252,6 +1097,7 @@ function SolsticeUI:_CreateFeature(content, panelData, feat)
     if featType == "button" then
         btn.MouseButton1Down:Connect(function()
             Tween(btn, TweenInfo.new(ui.Config.ClickScaleDuration), {
+                Size = UDim2.new(1, 0, 0, ui.Config.ItemHeight * ui.Config.ClickScale),
                 BackgroundColor3 = PALETTE.PressBg,
                 BackgroundTransparency = 0
             }):Play()
@@ -1261,9 +1107,10 @@ function SolsticeUI:_CreateFeature(content, panelData, feat)
         end)
 
         btn.MouseButton1Up:Connect(function()
-            Tween(btn, TweenInfo.new(ui.Config.ClickRestoreDuration), {
+            Tween(btn, TweenInfo.new(ui.Config.ClickRestoreDuration, Enum.EasingStyle.Back, Enum.EasingDirection.Out), {
+                Size = UDim2.new(1, 0, 0, ui.Config.ItemHeight),
                 BackgroundColor3 = PALETTE.ItemBg,
-                BackgroundTransparency = 0.15
+                BackgroundTransparency = PALETTE.ItemBgTransparency
             }):Play()
             Tween(glowFrame, TweenInfo.new(0.15), {
                 BackgroundTransparency = 1
@@ -1272,6 +1119,7 @@ function SolsticeUI:_CreateFeature(content, panelData, feat)
 
         btn.MouseLeave:Connect(function()
             Tween(btn, ANIM.Hover, {
+                Size = UDim2.new(1, 0, 0, ui.Config.ItemHeight),
                 BackgroundColor3 = PALETTE.ItemBg,
                 BackgroundTransparency = PALETTE.ItemBgTransparency
             }):Play()
@@ -1288,7 +1136,7 @@ function SolsticeUI:_CreateFeature(content, panelData, feat)
         btn.MouseButton1Down:Connect(function()
             if not enabled then
                 Tween(btn, TweenInfo.new(ui.Config.ClickScaleDuration), {
-                    BackgroundTransparency = 0.02
+                    Size = UDim2.new(1, 0, 0, ui.Config.ItemHeight * ui.Config.ClickScale)
                 }):Play()
                 Tween(glowFrame, TweenInfo.new(0.08), {
                     BackgroundTransparency = 0.5
@@ -1298,8 +1146,8 @@ function SolsticeUI:_CreateFeature(content, panelData, feat)
 
         btn.MouseButton1Up:Connect(function()
             if not enabled then
-                Tween(btn, TweenInfo.new(ui.Config.ClickRestoreDuration), {
-                    BackgroundTransparency = 0.15
+                Tween(btn, TweenInfo.new(ui.Config.ClickRestoreDuration, Enum.EasingStyle.Back, Enum.EasingDirection.Out), {
+                    Size = UDim2.new(1, 0, 0, ui.Config.ItemHeight)
                 }):Play()
             end
             Tween(glowFrame, TweenInfo.new(0.15), {
@@ -1308,6 +1156,11 @@ function SolsticeUI:_CreateFeature(content, panelData, feat)
         end)
 
         btn.MouseLeave:Connect(function()
+            if not enabled then
+                Tween(btn, ANIM.Hover, {
+                    Size = UDim2.new(1, 0, 0, ui.Config.ItemHeight)
+                }):Play()
+            end
             Tween(glowFrame, TweenInfo.new(0.1), {
                 BackgroundTransparency = 1
             }):Play()
@@ -1361,6 +1214,7 @@ function SolsticeUI:_CreateSettings(modContainer, panelData, settings, moduleNam
     for _, s in ipairs(settings) do
         local height = ui.Config.SettingHeight
         if s.type == "slider" then height = ui.Config.SliderHeight
+        elseif s.type == "color" then height = 24
         elseif s.type == "dropdown" then height = 24
         end
 
@@ -1381,6 +1235,8 @@ function SolsticeUI:_CreateSettings(modContainer, panelData, settings, moduleNam
             ui:_CreateButtonSetting(frame, s)
         elseif s.type == "keybind" then
             ui:_CreateKeybindSetting(frame, s)
+        elseif s.type == "color" then
+            ui:_CreateColorSetting(frame, s)
         elseif s.type == "dropdown" then
             ui:_CreateDropdownSetting(frame, s)
         end
@@ -1508,13 +1364,6 @@ function SolsticeUI:_CreateSliderSetting(frame, s, moduleName)
     fill.BorderSizePixel = 0
     fill.Parent = barBg
     Corner(fill, UDim.new(0.5, 0))
-
-    local fillGrad = Instance.new("UIGradient")
-    fillGrad.Color = ColorSequence.new({
-        ColorSequenceKeypoint.new(0, PALETTE.ActiveGradientStart),
-        ColorSequenceKeypoint.new(1, PALETTE.ActiveGradientEnd)
-    })
-    fillGrad.Parent = fill
 
     local hitArea = Instance.new("TextButton")
     hitArea.Size = UDim2.new(1, 0, 1, 16)
@@ -1766,6 +1615,63 @@ function SolsticeUI:_CreateKeybindSetting(frame, s)
     end)
 end
 
+-- ==================== COLOR SETTING ====================
+function SolsticeUI:_CreateColorSetting(frame, s)
+    local ui = self
+    local nameLbl = Instance.new("TextLabel")
+    nameLbl.Size = UDim2.new(0.4, 0, 1, 0)
+    nameLbl.Position = UDim2.new(0, 8, 0, 0)
+    nameLbl.BackgroundTransparency = 1
+    nameLbl.Text = s.name
+    nameLbl.TextColor3 = PALETTE.SettingText
+    nameLbl.Font = ui.Config.Font
+    nameLbl.TextSize = 11
+    nameLbl.TextXAlignment = Enum.TextXAlignment.Left
+    nameLbl.Parent = frame
+    if ui.Config.UseCustomFont then FontLoader.setFont(ui.Config.CustomFontName, nameLbl) end
+
+    local colors = s.colors or {
+        Color3.fromRGB(255, 0, 0),
+        Color3.fromRGB(255, 128, 0),
+        Color3.fromRGB(255, 255, 0),
+        Color3.fromRGB(0, 255, 0),
+        Color3.fromRGB(0, 128, 255),
+        Color3.fromRGB(128, 0, 255),
+    }
+
+    local boxSize = 11
+    local spacing = 2
+    local startX = ui.Config.PanelWidth - (#colors * (boxSize + spacing)) - 6
+
+    for i, color in ipairs(colors) do
+        local box = Instance.new("TextButton")
+        box.Size = UDim2.new(0, boxSize, 0, boxSize)
+        box.Position = UDim2.new(0, startX + (i-1) * (boxSize + spacing), 0.5, -boxSize/2)
+        box.BackgroundColor3 = color
+        box.BorderSizePixel = 0
+        box.Text = ""
+        box.Parent = frame
+        Corner(box, UDim.new(0, 2))
+
+        box.MouseEnter:Connect(function()
+            Tween(box, TweenInfo.new(0.1), {
+                Size = UDim2.new(0, boxSize+2, 0, boxSize+2),
+                Position = UDim2.new(0, startX + (i-1) * (boxSize + spacing) - 1, 0.5, -boxSize/2 - 1)
+            }):Play()
+        end)
+        box.MouseLeave:Connect(function()
+            Tween(box, TweenInfo.new(0.1), {
+                Size = UDim2.new(0, boxSize, 0, boxSize),
+                Position = UDim2.new(0, startX + (i-1) * (boxSize + spacing), 0.5, -boxSize/2)
+            }):Play()
+        end)
+
+        box.MouseButton1Click:Connect(function()
+            if s.callback then pcall(s.callback, color) end
+        end)
+    end
+end
+
 -- ==================== DROPDOWN SETTING ====================
 function SolsticeUI:_CreateDropdownSetting(frame, s)
     local ui = self
@@ -1808,10 +1714,6 @@ function SolsticeUI:_CreateDropdownSetting(frame, s)
             end
             idx = idx % #s.options + 1
             valLbl.Text = s.options[idx]
-            Tween(valLbl, TweenInfo.new(0.08), {TextColor3 = PALETTE.ActiveGradientStart}):Play()
-            task.delay(0.1, function()
-                Tween(valLbl, ANIM.Soft, {TextColor3 = PALETTE.SettingValue}):Play()
-            end)
             if s.callback then pcall(s.callback, s.options[idx]) end
         end
     end)
@@ -1882,7 +1784,6 @@ function SolsticeUI:Destroy()
     self.AllModules = {}
     self.Panels = {}
     self.ArrayListItems = {}
-    self._guiOriginalTrans = nil
 end
 
 return SolsticeUI
