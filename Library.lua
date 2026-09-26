@@ -1,7 +1,7 @@
 -- ============================================================
--- SolsticeUI v6.1 - Animation & Polish Overhaul
+-- SolsticeUI v6.2 - Animation & Polish Overhaul
 -- Optimized click feedback, smooth toggles, spring physics
--- ArrayList replaced with themed Glow/Outline/Bar/Split arraylist
+-- ArrayList: themed Glow/Outline/Bar/Split, enable-order sorting, exit animation
 -- ============================================================
 
 local Players = game:GetService("Players")
@@ -541,6 +541,8 @@ function SolsticeUI:_CreateArrayListItem(modName)
         glow = glow,
         label = label,
         anim = 0,
+        isExiting = false,
+        exitAnim = 0,
     }
     self.ArrayListItems[modName] = item
     return item
@@ -555,96 +557,132 @@ function SolsticeUI:_UpdateArrayList()
     local cfg = self.Config
     local theme = cfg.ArrayListTheme or ARRAYLIST_THEME
 
-    -- collect all enabled modules
-    local enabled = {}
+    -- collect all known modules (including disabled ones, to keep a fixed order)
+    local allModules = {}
     for name, data in pairs(self.EnabledModules) do
-        if data.state then
-            local display = name
-            if data.value and tostring(data.value) ~= "" then
-                display = name .. " " .. tostring(data.value)
-            end
-            table.insert(enabled, {name = name, display = display})
-        end
+        table.insert(allModules, {name = name, data = data})
     end
 
-    self.ArrayListMaster.Visible = #enabled > 0
-
-    -- sort by display length (longest on top)
-    table.sort(enabled, function(a, b)
-        return #a.display > #b.display
+    -- sort by enable order (first enabled on top)
+    table.sort(allModules, function(a, b)
+        return (a.data.lastEnabledTime or 0) < (b.data.lastEnabledTime or 0)
     end)
 
-    local usedNames = {}
-    for i, data in ipairs(enabled) do
-        usedNames[data.name] = true
-
-        local item = self.ArrayListItems[data.name]
-        if not item then
-            item = self:_CreateArrayListItem(data.name)
-        end
-
-        local color = GetThemedColor(i * 100, theme)
-        local anim = item.anim
-
-        item.container.Size = UDim2.new(0, 0, 0, math.max(0, (cfg.ArrayListTextSize + 8) * anim))
-        item.container.AutomaticSize = anim > 0.01 and Enum.AutomaticSize.X or Enum.AutomaticSize.None
-        item.container.BackgroundTransparency = 1 - (0.7 * anim)
-        item.container.Visible = anim > 0.01
-        item.container.LayoutOrder = i
-
-        item.label.Text = data.display
-        item.label.TextSize = cfg.ArrayListTextSize
-        item.label.TextColor3 = color
-
-        if cfg.ArrayListTextShadow then
-            item.label.TextStrokeTransparency = math.clamp(0.5 - (cfg.ArrayListShadowOffset * 0.15), 0, 1)
-            item.label.TextStrokeColor3 = Color3.new(0, 0, 0)
-        else
-            item.label.TextStrokeTransparency = 1
-        end
-
-        item.bar.BackgroundColor3 = color
-
-        local mode = cfg.ArrayListDisplay
-        if mode == "None" then
-            item.bar.Visible = false
-            item.outline.Transparency = 1
-            item.glow.Transparency = 1
-        elseif mode == "Bar" then
-            item.bar.Visible = true
-            item.outline.Transparency = 1
-            item.glow.Transparency = 1
-        elseif mode == "Outline" then
-            item.bar.Visible = false
-            item.outline.Transparency = 1 - (0.6 * anim)
-            item.outline.Color = color
-            local glowAlpha = cfg.ArrayListGlow and (0.5 * anim * (cfg.ArrayListGlowDensity / 5)) or 0
-            item.glow.Transparency = 1 - glowAlpha
-            item.glow.Color = color
-            item.glow.Thickness = cfg.ArrayListGlowStrength
-        else -- Split
-            item.bar.Visible = true
-            item.outline.Transparency = 1 - (0.4 * anim)
-            item.outline.Color = color
-            local glowAlpha = cfg.ArrayListGlow and (0.4 * anim * (cfg.ArrayListGlowDensity / 5)) or 0
-            item.glow.Transparency = 1 - glowAlpha
-            item.glow.Color = color
-            item.glow.Thickness = cfg.ArrayListGlowStrength
+    -- mark which modules are currently enabled
+    local enabledSet = {}
+    for _, m in ipairs(allModules) do
+        if m.data.state then
+            enabledSet[m.name] = true
         end
     end
 
-    -- hide items whose fade-out animation has finished
+    -- update exiting states
     for name, item in pairs(self.ArrayListItems) do
-        if not usedNames[name] and item.anim <= 0.01 then
-            item.container.Visible = false
-            item.container.Size = UDim2.new(0, 0, 0, 0)
+        if not enabledSet[name] then
+            if not item.isExiting then
+                item.isExiting = true
+                item.exitAnim = item.anim
+            end
+        else
+            item.isExiting = false
+            item.exitAnim = 0
         end
     end
+
+    -- render all modules in enable order (including exiting ones)
+    local renderIndex = 0
+    for _, m in ipairs(allModules) do
+        local item = self.ArrayListItems[m.name]
+        local isEnabled = m.data.state
+        local isExiting = item and item.isExiting
+
+        if item or isEnabled then
+            if not item then
+                item = self:_CreateArrayListItem(m.name)
+            end
+
+            local anim
+            if isEnabled then
+                anim = item.anim
+            elseif isExiting then
+                anim = item.exitAnim
+            end
+
+            if not anim or anim < 0.01 then
+                item.container.Visible = false
+                item.container.Size = UDim2.new(0, 0, 0, 0)
+            else
+                renderIndex = renderIndex + 1
+
+                local display = m.name
+                if m.data.value and tostring(m.data.value) ~= "" then
+                    display = m.name .. " " .. tostring(m.data.value)
+                end
+
+                local color = GetThemedColor(renderIndex * 100, theme)
+                local displayColor = color
+                if isExiting then
+                    displayColor = color:Lerp(Color3.fromRGB(100, 100, 100), 1 - anim)
+                end
+
+                item.container.Size = UDim2.new(0, 0, 0, math.max(0, (cfg.ArrayListTextSize + 8) * anim))
+                item.container.AutomaticSize = anim > 0.01 and Enum.AutomaticSize.X or Enum.AutomaticSize.None
+                item.container.BackgroundTransparency = 1 - (0.7 * anim)
+                item.container.Visible = true
+                item.container.LayoutOrder = renderIndex
+
+                item.label.Text = display
+                item.label.TextSize = cfg.ArrayListTextSize
+                item.label.TextColor3 = displayColor
+
+                if cfg.ArrayListTextShadow then
+                    item.label.TextStrokeTransparency = math.clamp(0.5 - (cfg.ArrayListShadowOffset * 0.15), 0, 1)
+                    item.label.TextStrokeColor3 = Color3.new(0, 0, 0)
+                else
+                    item.label.TextStrokeTransparency = 1
+                end
+
+                item.bar.BackgroundColor3 = displayColor
+
+                local mode = cfg.ArrayListDisplay
+                if mode == "None" then
+                    item.bar.Visible = false
+                    item.outline.Transparency = 1
+                    item.glow.Transparency = 1
+                elseif mode == "Bar" then
+                    item.bar.Visible = true
+                    item.outline.Transparency = 1
+                    item.glow.Transparency = 1
+                elseif mode == "Outline" then
+                    item.bar.Visible = false
+                    item.outline.Transparency = 1 - (0.6 * anim)
+                    item.outline.Color = displayColor
+                    local glowAlpha = cfg.ArrayListGlow and (0.5 * anim * (cfg.ArrayListGlowDensity / 5)) or 0
+                    item.glow.Transparency = 1 - glowAlpha
+                    item.glow.Color = displayColor
+                    item.glow.Thickness = cfg.ArrayListGlowStrength
+                else -- Split
+                    item.bar.Visible = true
+                    item.outline.Transparency = 1 - (0.4 * anim)
+                    item.outline.Color = displayColor
+                    local glowAlpha = cfg.ArrayListGlow and (0.4 * anim * (cfg.ArrayListGlowDensity / 5)) or 0
+                    item.glow.Transparency = 1 - glowAlpha
+                    item.glow.Color = displayColor
+                    item.glow.Thickness = cfg.ArrayListGlowStrength
+                end
+            end
+        end
+    end
+
+    self.ArrayListMaster.Visible = renderIndex > 0
 end
 
 function SolsticeUI:_SetModuleState(name, state, value)
     if not self.EnabledModules[name] then
-        self.EnabledModules[name] = {state = false, value = ""}
+        self.EnabledModules[name] = {state = false, value = "", lastEnabledTime = 0}
+    end
+    if state and not self.EnabledModules[name].state then
+        self.EnabledModules[name].lastEnabledTime = tick()
     end
     self.EnabledModules[name].state = state
     if value ~= nil then
@@ -745,11 +783,18 @@ function SolsticeUI:_StartRenderLoop()
         if dt <= 0 or dt > 1 then dt = 1 / 60 end
 
         if self.ARRAYLIST_ENABLED then
-            -- lerp each module's in/out animation
+            -- lerp each module's enter animation
             for name, item in pairs(self.ArrayListItems) do
                 local target = (self.EnabledModules[name] and self.EnabledModules[name].state) and 1.0 or 0.0
                 item.anim = item.anim + (target - item.anim) * dt * self.Config.ArrayListAnimSpeed
                 item.anim = math.clamp(item.anim, 0.0, 1.0)
+            end
+            -- lerp exit animations
+            for _, item in pairs(self.ArrayListItems) do
+                if item.isExiting then
+                    item.exitAnim = item.exitAnim + (0.0 - item.exitAnim) * dt * self.Config.ArrayListAnimSpeed
+                    item.exitAnim = math.clamp(item.exitAnim, 0.0, 1.0)
+                end
             end
             -- refresh visuals (themed colors are time-based)
             self:_UpdateArrayList()
