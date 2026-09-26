@@ -836,17 +836,6 @@ function SolsticeUI:_StartRenderLoop()
         lastTime = currentTime
         if dt <= 0 or dt > 1 then dt = 1 / 60 end
 
-        -- slowly rotate the gradient of enabled module buttons
-        for _, mod in pairs(self.AllModules) do
-            local btn = mod.Button
-            if btn and btn.Parent then
-                local grad = btn:FindFirstChildOfClass("UIGradient")
-                if grad and grad.Enabled then
-                    grad.Rotation = (grad.Rotation + dt * 45) % 360
-                end
-            end
-        end
-
         if self.ARRAYLIST_ENABLED then
             -- lerp each module's enter animation
             for name, item in pairs(self.ArrayListItems) do
@@ -1107,7 +1096,7 @@ function SolsticeUI:_CreateFeature(content, panelData, feat)
         ColorSequenceKeypoint.new(0, PALETTE.ActiveGradientStart),
         ColorSequenceKeypoint.new(1, PALETTE.ActiveGradientEnd)
     })
-    activeGrad.Rotation = 0
+    activeGrad.Rotation = 90  -- static vertical gradient: identical on every enabled button, no corner banding
     activeGrad.Enabled = false
     activeGrad.Parent = btn
 
@@ -1116,6 +1105,15 @@ function SolsticeUI:_CreateFeature(content, panelData, feat)
     activeStroke.Thickness = 1
     activeStroke.Transparency = 1
     activeStroke.Parent = btn
+
+    local topLight = Instance.new("Frame")
+    topLight.Name = "TopHighlight"
+    topLight.Size = UDim2.new(1, -6, 0, 1)
+    topLight.Position = UDim2.new(0, 3, 0, 1)
+    topLight.BackgroundColor3 = Color3.fromRGB(255, 255, 255)
+    topLight.BackgroundTransparency = 1
+    topLight.BorderSizePixel = 0
+    topLight.Parent = btn
 
     local glowFrame = Instance.new("Frame")
     glowFrame.Name = "Glow"
@@ -1157,6 +1155,7 @@ function SolsticeUI:_CreateFeature(content, panelData, feat)
             btn.TextColor3 = PALETTE.ActiveText
             activeGrad.Enabled = true
             activeStroke.Transparency = 0.35
+            topLight.BackgroundTransparency = 0.8
             ui:_SetModuleState(feat.name, true, ui.SavedConfig.modules[feat.name].value)
             if feat.callback then pcall(feat.callback, true) end
         end
@@ -1193,15 +1192,12 @@ function SolsticeUI:_CreateFeature(content, panelData, feat)
             }):Play()
             activeGrad.Enabled = true
             Tween(activeStroke, ANIM.Standard, {Transparency = 0.35}):Play()
+            Tween(topLight, ANIM.Standard, {BackgroundTransparency = 0.8}):Play()
 
-            Tween(btn, TweenInfo.new(0.1, Enum.EasingStyle.Quad, Enum.EasingDirection.Out), {
-                Size = UDim2.new(1, 0, 0, ui.Config.ItemHeight + 1)
-            }):Play()
-            task.delay(0.1, function()
+            Tween(glowFrame, TweenInfo.new(0.12), {BackgroundTransparency = 0.55}):Play()
+            task.delay(0.12, function()
                 if enabled then
-                    Tween(btn, TweenInfo.new(0.12, Enum.EasingStyle.Back, Enum.EasingDirection.Out), {
-                        Size = UDim2.new(1, 0, 0, ui.Config.ItemHeight)
-                    }):Play()
+                    Tween(glowFrame, TweenInfo.new(0.3), {BackgroundTransparency = 1}):Play()
                 end
             end)
         else
@@ -1211,6 +1207,7 @@ function SolsticeUI:_CreateFeature(content, panelData, feat)
                 TextColor3 = PALETTE.ItemText
             }):Play()
             Tween(activeStroke, ANIM.Standard, {Transparency = 1}):Play()
+            Tween(topLight, ANIM.Standard, {BackgroundTransparency = 1}):Play()
             task.delay(0.15, function()
                 if not enabled then activeGrad.Enabled = false end
             end)
@@ -1255,7 +1252,6 @@ function SolsticeUI:_CreateFeature(content, panelData, feat)
     if featType == "button" then
         btn.MouseButton1Down:Connect(function()
             Tween(btn, TweenInfo.new(ui.Config.ClickScaleDuration), {
-                Size = UDim2.new(1, 0, 0, ui.Config.ItemHeight * ui.Config.ClickScale),
                 BackgroundColor3 = PALETTE.PressBg,
                 BackgroundTransparency = 0
             }):Play()
@@ -1265,10 +1261,9 @@ function SolsticeUI:_CreateFeature(content, panelData, feat)
         end)
 
         btn.MouseButton1Up:Connect(function()
-            Tween(btn, TweenInfo.new(ui.Config.ClickRestoreDuration, Enum.EasingStyle.Back, Enum.EasingDirection.Out), {
-                Size = UDim2.new(1, 0, 0, ui.Config.ItemHeight),
+            Tween(btn, TweenInfo.new(ui.Config.ClickRestoreDuration), {
                 BackgroundColor3 = PALETTE.ItemBg,
-                BackgroundTransparency = PALETTE.ItemBgTransparency
+                BackgroundTransparency = 0.15
             }):Play()
             Tween(glowFrame, TweenInfo.new(0.15), {
                 BackgroundTransparency = 1
@@ -1277,7 +1272,6 @@ function SolsticeUI:_CreateFeature(content, panelData, feat)
 
         btn.MouseLeave:Connect(function()
             Tween(btn, ANIM.Hover, {
-                Size = UDim2.new(1, 0, 0, ui.Config.ItemHeight),
                 BackgroundColor3 = PALETTE.ItemBg,
                 BackgroundTransparency = PALETTE.ItemBgTransparency
             }):Play()
@@ -1294,7 +1288,7 @@ function SolsticeUI:_CreateFeature(content, panelData, feat)
         btn.MouseButton1Down:Connect(function()
             if not enabled then
                 Tween(btn, TweenInfo.new(ui.Config.ClickScaleDuration), {
-                    Size = UDim2.new(1, 0, 0, ui.Config.ItemHeight * ui.Config.ClickScale)
+                    BackgroundTransparency = 0.02
                 }):Play()
                 Tween(glowFrame, TweenInfo.new(0.08), {
                     BackgroundTransparency = 0.5
@@ -1304,8 +1298,8 @@ function SolsticeUI:_CreateFeature(content, panelData, feat)
 
         btn.MouseButton1Up:Connect(function()
             if not enabled then
-                Tween(btn, TweenInfo.new(ui.Config.ClickRestoreDuration, Enum.EasingStyle.Back, Enum.EasingDirection.Out), {
-                    Size = UDim2.new(1, 0, 0, ui.Config.ItemHeight)
+                Tween(btn, TweenInfo.new(ui.Config.ClickRestoreDuration), {
+                    BackgroundTransparency = 0.15
                 }):Play()
             end
             Tween(glowFrame, TweenInfo.new(0.15), {
@@ -1314,11 +1308,6 @@ function SolsticeUI:_CreateFeature(content, panelData, feat)
         end)
 
         btn.MouseLeave:Connect(function()
-            if not enabled then
-                Tween(btn, ANIM.Hover, {
-                    Size = UDim2.new(1, 0, 0, ui.Config.ItemHeight)
-                }):Play()
-            end
             Tween(glowFrame, TweenInfo.new(0.1), {
                 BackgroundTransparency = 1
             }):Play()
